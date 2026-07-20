@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "check": "tsc -b --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "deploy": "npm run build && npx gh-pages -d dist -b gh-pages -m 'deploy'"
   },
   "dependencies": {
     "clsx": "^2.1.1",
