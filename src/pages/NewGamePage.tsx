@@ -52,7 +52,7 @@ export default function NewGamePage({ onNavigate }: { onNavigate: (page: 'game' 
       <div className="mx-auto max-w-6xl">
         <header className="rounded-[28px] border border-[#7a5a36]/55 bg-[linear-gradient(180deg,rgba(51,35,23,0.97),rgba(29,20,13,0.96))] p-8 shadow-[0_30px_100px_rgba(22,13,7,0.45)]">
           <p className="text-xs uppercase tracking-[0.35em] text-amber-200/55">新游戏</p>
-          <h1 className="mt-4 font-serif text-4xl text-[#fff4dd]">修仙商会开拓许可</h1>
+          <h1 className="mt-4 font-serif text-4xl text-[#fff4dd]">修仙商会开拓</h1>
           <p className="mt-4 max-w-3xl text-sm leading-7 text-[#d9c39f]">
             默认只需在四种典型配置中择其一，再为商会定下名号即可启程。若想微调数值，再展开细节设置慢慢调整。
           </p>
