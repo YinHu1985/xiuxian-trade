@@ -8,6 +8,7 @@ import {
   donateToCity,
   executePendingPlan,
   establishBranch,
+  removeTradeLink,
   scheduleRepairGate,
   scheduleRetainerDispatch,
   scheduleTravel,
@@ -36,6 +37,7 @@ interface GameStore {
   buildBuilding: (nodeId: string, type: BuildingType) => void
   createTradeLink: (targetNodeId: string) => void
   createTradeLinkBetween: (fromNodeId: string, toNodeId: string) => void
+  removeTradeLink: (linkId: string) => void
   scheduleRetainerDispatch: (targetNodeId: string) => void
   scheduleRepairGate: () => void
   clearPendingPlan: () => void
@@ -68,6 +70,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set((state) => ({ session: state.session ? createTradeLink(state.session, targetNodeId) : null })),
   createTradeLinkBetween: (fromNodeId, toNodeId) =>
     set((state) => ({ session: state.session ? createTradeLinkBetween(state.session, fromNodeId, toNodeId) : null })),
+  removeTradeLink: (linkId) =>
+    set((state) => ({ session: state.session ? removeTradeLink(state.session, linkId) : null })),
   scheduleRetainerDispatch: (targetNodeId) =>
     set((state) => ({ session: state.session ? scheduleRetainerDispatch(state.session, targetNodeId) : null })),
   scheduleRepairGate: () => set((state) => ({ session: state.session ? scheduleRepairGate(state.session) : null })),

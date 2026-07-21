@@ -4,7 +4,7 @@ import tsconfigPaths from "vite-tsconfig-paths";
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: '/xiuxian-trade/',  // ← 改成你的仓库名，前后斜杠都要
+  base: '/xiuxian-trade/',
   build: {
     sourcemap: 'hidden',
   },
@@ -12,8 +12,8 @@ export default defineConfig({
     react({
       babel: {
         plugins: [
-          'react-dev-locator',
-        ],
+            process.env.NODE_ENV === 'development' ? 'react-dev-locator' : null,
+          ].filter(Boolean) as string[],
       },
     }),
     tsconfigPaths()

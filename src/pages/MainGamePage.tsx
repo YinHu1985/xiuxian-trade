@@ -19,7 +19,6 @@ import { useGameStore } from '@/store/gameStore'
 import type { BuildingType, GameSession } from '@/game/types'
 
 type MainView = 'town' | 'airship' | 'map'
-type MapMode = 'explore' | 'guild'
 type OverlayWindowState =
   | {
       kind: 'rumor' | 'market' | 'branch' | 'manor'
@@ -104,6 +103,7 @@ export default function MainGamePage({ onNavigate }: { onNavigate: (page: 'game'
   const establishBranch = useGameStore((state) => state.establishBranch)
   const donateToCity = useGameStore((state) => state.donateToCity)
   const createTradeLinkBetween = useGameStore((state) => state.createTradeLinkBetween)
+  const removeTradeLink = useGameStore((state) => state.removeTradeLink)
   const buildBuilding = useGameStore((state) => state.buildBuilding)
   const createTradeLink = useGameStore((state) => state.createTradeLink)
   const clearPendingPlan = useGameStore((state) => state.clearPendingPlan)
@@ -146,7 +146,6 @@ export default function MainGamePage({ onNavigate }: { onNavigate: (page: 'game'
   const selectedNode = getSelectedNode(session)
   const pendingPlan = getPendingPlan(session)
   const pendingPlanDescription = describePendingPlan(session, pendingPlan)
-  const rumorTargets = session.world.nodes.filter((node) => node.discovery === 'rumor')
   const overlayNode = overlayWindow ? session.world.nodes.find((node) => node.id === overlayWindow.nodeId) ?? currentNode : null
 
   function openOverlay(kind: NonNullable<OverlayWindowState>['kind'], nodeId: string) {
@@ -190,7 +189,6 @@ export default function MainGamePage({ onNavigate }: { onNavigate: (page: 'game'
       <div className="relative mx-auto my-auto" style={stageStyle}>
         <div className="relative flex h-full flex-col overflow-hidden rounded-[24px] border border-[#7a5832]/55 bg-[linear-gradient(180deg,rgba(38,25,16,0.98),rgba(28,19,13,0.97))] shadow-[0_40px_140px_rgba(26,15,6,0.72)]">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,211,133,0.12),transparent_26%),radial-gradient(circle_at_bottom,rgba(78,103,84,0.16),transparent_32%)]" />
-          <div className="pointer-events-none absolute inset-[1px] rounded-[23px] border border-[#efd19a]/8" />
 
           <div className="absolute inset-x-4 top-2.5 z-20">
             <TopBar
@@ -226,7 +224,6 @@ export default function MainGamePage({ onNavigate }: { onNavigate: (page: 'game'
                   revealAll={revealAll}
                   showMoveRange={showMoveRange}
                   selectedNode={selectedNode}
-                  rumorTargets={rumorTargets}
                   pendingPlan={pendingPlan}
                   onSelectNode={selectNode}
                   onToggleReveal={() => setRevealAll((value) => !value)}
@@ -234,6 +231,7 @@ export default function MainGamePage({ onNavigate }: { onNavigate: (page: 'game'
                   onScheduleTravel={scheduleTravel}
                   onOpenBranch={() => openOverlay('branch', selectedNode.id)}
                   onCreateTradeLink={createTradeLinkBetween}
+                  onRemoveTradeLink={removeTradeLink}
                 />
               ) : null}
             </section>
@@ -316,7 +314,6 @@ export default function MainGamePage({ onNavigate }: { onNavigate: (page: 'game'
 function CompactPanel({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
   return (
     <section className="relative overflow-hidden rounded-[18px] border border-[#7a5a36]/55 bg-[linear-gradient(180deg,rgba(67,45,28,0.97),rgba(41,28,19,0.95))] p-5 shadow-[0_16px_60px_rgba(31,20,9,0.35)]">
-      <div className="pointer-events-none absolute inset-[1px] rounded-[17px] border border-[#f0d3a0]/10" />
       <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(255,226,170,0.45),transparent)]" />
       <p className="text-xs uppercase tracking-[0.3em] text-amber-100/40">{title}</p>
       <h2 className="mt-2 font-serif text-lg text-[#fff4dd]">{subtitle}</h2>
@@ -337,8 +334,7 @@ function FloatingPanel({
   className?: string
 }) {
   return (
-    <section className={`pointer-events-auto relative overflow-hidden rounded-[18px] border border-[#7a5a36]/58 bg-[linear-gradient(180deg,rgba(70,46,29,0.97),rgba(43,29,19,0.95))] p-4 shadow-[0_22px_60px_rgba(20,11,5,0.34)] ${className}`}>
-      <div className="pointer-events-none absolute inset-[1px] rounded-[17px] border border-[#efd3a1]/10" />
+    <section className={`pointer-events-auto relative overflow-hidden rounded-[18px] border border-[#7a5a36]/58 bg-[linear-gradient(180deg,rgba(67,45,28,0.97),rgba(41,28,19,0.95))] p-4 shadow-[0_22px_60px_rgba(20,11,5,0.34)] ${className}`}>
       <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(255,231,186,0.42),transparent)]" />
       <div className="pointer-events-none absolute inset-y-4 left-0 w-px bg-[linear-gradient(180deg,transparent,rgba(214,170,102,0.32),transparent)]" />
       <p className="text-xs uppercase tracking-[0.3em] text-amber-100/40">{title}</p>
@@ -350,7 +346,7 @@ function FloatingPanel({
 
 function StatChip({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-[14px] border border-[#7c5c39]/45 bg-[linear-gradient(180deg,rgba(92,61,36,0.9),rgba(58,38,24,0.88))] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,232,190,0.05)]">
+    <div className="rounded-[14px] border border-[#7c5c39]/45 bg-[linear-gradient(180deg,rgba(92,61,36,0.9),rgba(58,38,24,0.88))] px-4 py-3">
       <div className="text-xs uppercase tracking-[0.22em] text-amber-100/40">{label}</div>
       <div className="mt-2 text-base text-[#fff4dd]">{value}</div>
     </div>
@@ -472,15 +468,6 @@ function AirshipStage({ session }: { session: GameSession }) {
         </FloatingPanel>
       </div>
 
-      <div className="absolute bottom-5 left-5 w-80">
-        <FloatingPanel title="总部注记" subtitle="当前版本">
-          <div className="grid gap-3 text-sm leading-7 text-[#ead8ba]">
-            <div className="rounded-[14px] border border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(86,58,35,0.92),rgba(55,37,24,0.9))] px-4 py-3">飞舟页当前只展示全局数据，不再重复显示当前城镇或选中据点。</div>
-            <div className="rounded-[14px] border border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(86,58,35,0.92),rgba(55,37,24,0.9))] px-4 py-3">移动力、商路上限、供奉数量等升级位已预留，后续可在此扩展。</div>
-          </div>
-        </FloatingPanel>
-      </div>
-
       <div className="absolute right-5 top-10 w-72">
         <FloatingPanel title="预留模块" subtitle="后续可扩展">
           <div className="grid gap-2">
@@ -500,7 +487,6 @@ function MapStage({
   revealAll,
   showMoveRange,
   selectedNode,
-  rumorTargets,
   pendingPlan,
   onSelectNode,
   onToggleReveal,
@@ -508,12 +494,12 @@ function MapStage({
   onScheduleTravel,
   onOpenBranch,
   onCreateTradeLink,
+  onRemoveTradeLink,
 }: {
   session: GameSession
   revealAll: boolean
   showMoveRange: boolean
   selectedNode: ReturnType<typeof getSelectedNode>
-  rumorTargets: GameSession['world']['nodes']
   pendingPlan: ReturnType<typeof getPendingPlan>
   onSelectNode: (nodeId: string) => void
   onToggleReveal: () => void
@@ -521,6 +507,7 @@ function MapStage({
   onScheduleTravel: (nodeId: string) => void
   onOpenBranch: () => void
   onCreateTradeLink: (fromNodeId: string, toNodeId: string) => void
+  onRemoveTradeLink: (linkId: string) => void
 }) {
   const currentNode = getCurrentNode(session)
   const moveRangeNodeIds = showMoveRange ? getMoveRangeReachableNodeIds(session) : []
@@ -541,35 +528,8 @@ function MapStage({
         className="absolute inset-0"
       />
       <div className="pointer-events-none absolute inset-x-4 bottom-4 top-4 z-10 flex justify-between gap-4">
-        <div className="flex h-full w-60 flex-col justify-between gap-4">
-          <FloatingPanel title="地图操作" subtitle="舆图与路引" className="shrink-0">
-            <button className="action mt-4 w-full" onClick={onToggleReveal}>
-              {revealAll ? '关闭全图调试' : '显示全图调试'}
-            </button>
-            <button className="action mt-3 w-full" onClick={onToggleMoveRange}>
-              {showMoveRange ? '隐藏移动范围' : '显示移动范围'}
-            </button>
-            <div className="mt-3 rounded-[14px] border border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(86,58,35,0.92),rgba(55,37,24,0.9))] px-4 py-3 text-sm leading-6 text-[#ead8ba]">
-              鼠标滚轮缩放，拖动画布平移。地图页只负责拟定计划，真正过回合要回城镇主界面执行。
-            </div>
-          </FloatingPanel>
-
-          <FloatingPanel title="商路管理" subtitle={`${session.guild.tradeLinks.length}/${session.player.tradeLinkCapacity}`}>
-            <TradeLinkPanel session={session} onCreateTradeLink={onCreateTradeLink} />
-          </FloatingPanel>
-
-          <FloatingPanel title="当前驻留" subtitle={currentNode.name} className="shrink-0">
-            <div className="grid grid-cols-2 gap-3">
-              <StatChip label="位置" value={nodeTypeLabelMap[currentNode.type]} />
-              <StatChip label="货仓" value={`${session.player.cargo.length}/${session.player.cargoCapacity}`} />
-              <StatChip label="传闻据点" value={rumorTargets.length} />
-              <StatChip label="商路" value={`${session.guild.tradeLinks.length}/${session.player.tradeLinkCapacity}`} />
-            </div>
-          </FloatingPanel>
-        </div>
-
-        <div className="flex h-full w-[300px] flex-col justify-between gap-4">
-          <FloatingPanel title="当前选中" subtitle={selectedNode.name} className="shrink-0">
+        <div className="flex h-full w-[300px] flex-col">
+          <FloatingPanel title="当前选中" subtitle={selectedNode.name}>
             <div className="grid grid-cols-2 gap-3">
               <StatChip label="状态" value={selectedNode.discovery === 'confirmed' ? '确认' : selectedNode.discovery === 'rumor' ? '传闻' : '未知'} />
               <StatChip label="类型" value={nodeTypeLabelMap[selectedNode.type]} />
@@ -603,8 +563,8 @@ function MapStage({
                 <button
                   className={
                     isSelectedTravelPlanned
-                      ? 'w-full rounded-[14px] border border-[#d5ae72]/75 bg-[linear-gradient(180deg,rgba(128,89,46,0.98),rgba(82,55,30,0.96))] px-4 py-3 text-sm text-[#fff4dd] shadow-[0_10px_24px_rgba(33,20,10,0.28)] transition hover:border-[#e6c78e]'
-                      : 'action w-full'
+                      ? 'w-full rounded-[14px] border border-[#c19154]/70 bg-[linear-gradient(180deg,rgba(128,89,46,0.98),rgba(82,55,30,0.96))] px-4 py-3 text-sm text-[#fff4dd] shadow-[0_10px_24px_rgba(33,20,10,0.28)] transition hover:border-[#d8b073]'
+                      : 'w-full rounded-[14px] border border-[#c5975d]/60 bg-[linear-gradient(180deg,rgba(112,74,42,0.98),rgba(76,50,28,0.96))] px-4 py-3 text-sm text-[#fff4dd] shadow-[0_10px_24px_rgba(33,20,10,0.28)] transition hover:border-[#e0b87a] hover:bg-[linear-gradient(180deg,rgba(132,88,48,0.99),rgba(88,58,32,0.97))]'
                   }
                   onClick={() => onScheduleTravel(selectedNode.id)}
                 >
@@ -619,15 +579,6 @@ function MapStage({
                   {selectedTravel?.reason ?? '先在大地图上选中一个可行动的据点。'}
                 </div>
               )}
-              {selectedTravel?.available ? (
-                <div className="rounded-[14px] border border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(86,58,35,0.92),rgba(55,37,24,0.9))] px-4 py-3 text-sm leading-6 text-[#ead8ba]">
-                  {isSelectedTravelPlanned
-                    ? `已将 ${selectedNode.name} 记为当前回合目标，回到城镇主界面后执行计划即可出发。`
-                    : selectedTravel.kind === 'explore'
-                      ? `此行动会沿当前传闻道路前去确认 ${selectedNode.name}，无论移动力多少都只消耗一回合。`
-                      : `此行动会沿已确认道路移动 ${selectedTravel.steps} 段，预计耗费 ${selectedTravel.cost} 灵石。`}
-                </div>
-              ) : null}
               <div className="grid grid-cols-2 gap-2">
                 {canOpenBranch ? (
                   <button className="action col-span-2" onClick={onOpenBranch}>
@@ -635,6 +586,26 @@ function MapStage({
                   </button>
                 ) : null}
               </div>
+            </div>
+          </FloatingPanel>
+        </div>
+
+        <div className="flex h-full w-60 flex-col gap-4">
+          <FloatingPanel title="商路管理" subtitle={`${session.guild.tradeLinks.length}/${session.player.tradeLinkCapacity}`} className="min-h-0 flex-1 flex flex-col">
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <TradeLinkPanel session={session} onCreateTradeLink={onCreateTradeLink} onRemoveTradeLink={onRemoveTradeLink} />
+            </div>
+          </FloatingPanel>
+
+          <FloatingPanel title="地图操作" subtitle="舆图与路引" className="shrink-0">
+            <button className="action mt-1 w-full" onClick={onToggleReveal}>
+              {revealAll ? '关闭全图调试' : '显示全图调试'}
+            </button>
+            <button className="action mt-3 w-full" onClick={onToggleMoveRange}>
+              {showMoveRange ? '隐藏移动范围' : '显示移动范围'}
+            </button>
+            <div className="mt-3 rounded-[14px] border border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(86,58,35,0.92),rgba(55,37,24,0.9))] px-4 py-3 text-sm leading-6 text-[#ead8ba]">
+              鼠标滚轮缩放，拖动画布平移。地图页只负责拟定计划，真正过回合要回城镇主界面执行。
             </div>
           </FloatingPanel>
         </div>
@@ -647,7 +618,6 @@ function TurnAdvanceOverlay({ planLabel }: { planLabel: string }) {
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-[radial-gradient(circle_at_center,rgba(85,55,27,0.16),rgba(18,12,8,0.84))] backdrop-blur-[2px]">
       <div className="relative w-[360px] overflow-hidden rounded-[20px] border border-[#8b6840]/65 bg-[linear-gradient(180deg,rgba(52,35,22,0.98),rgba(29,20,13,0.97))] px-6 py-6 text-center shadow-[0_26px_80px_rgba(15,9,5,0.72)]">
-        <div className="pointer-events-none absolute inset-[1px] rounded-[19px] border border-[#efd4a4]/10" />
         <p className="text-xs uppercase tracking-[0.38em] text-amber-100/45">回合推进</p>
         <h3 className="mt-3 font-serif text-2xl text-[#fff4dd]">{planLabel}</h3>
         <p className="mt-3 text-sm leading-6 text-[#dcc5a0]">商会正在调度飞舟、账册与路引，请稍候片刻。</p>
@@ -673,7 +643,6 @@ function DialogWindow({
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#1d140d]/76 backdrop-blur-sm">
       <div className="relative w-[480px] max-w-[86%] overflow-hidden rounded-[20px] border border-[#7a5b36]/60 bg-[linear-gradient(180deg,rgba(48,32,21,0.99),rgba(30,21,14,0.98))] p-6 shadow-[0_30px_100px_rgba(28,16,8,0.9)]">
-        <div className="pointer-events-none absolute inset-[1px] rounded-[19px] border border-[#efd4a4]/10" />
         <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(255,229,177,0.42),transparent)]" />
         <p className="text-xs uppercase tracking-[0.32em] text-amber-100/40">消息</p>
         <h2 className="mt-2 font-serif text-2xl text-[#fff4dd]">{title}</h2>
@@ -697,7 +666,6 @@ function OverlayFrame({ title, onClose, children }: { title: string; onClose: ()
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#1d140d]/76 backdrop-blur-sm">
       <div className="relative flex h-[82%] w-[86%] flex-col overflow-hidden rounded-[22px] border border-[#7a5b36]/60 bg-[linear-gradient(180deg,rgba(48,32,21,0.99),rgba(30,21,14,0.98))] p-5 shadow-[0_30px_100px_rgba(28,16,8,0.9)]">
-        <div className="pointer-events-none absolute inset-[1px] rounded-[21px] border border-[#efd4a4]/10" />
         <div className="mb-4 flex items-center justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.32em] text-amber-100/40">子窗口</p>
@@ -851,58 +819,83 @@ function MarketWindow({
 function TradeLinkPanel({
   session,
   onCreateTradeLink,
+  onRemoveTradeLink,
 }: {
   session: GameSession
   onCreateTradeLink: (fromNodeId: string, toNodeId: string) => void
+  onRemoveTradeLink: (linkId: string) => void
 }) {
   const branchNodes = session.guild.branches
     .map((b) => session.world.nodes.find((n) => n.id === b.nodeId))
     .filter((n): n is NonNullable<typeof n> => n != null && n.discovery !== 'hidden')
   const [fromId, setFromId] = useState('')
   const [toId, setToId] = useState('')
-  const canCreate = fromId && toId && fromId !== toId && session.guild.tradeLinks.length < session.player.tradeLinkCapacity
+  const isFull = session.guild.tradeLinks.length >= session.player.tradeLinkCapacity
+  const canCreate = fromId && toId && fromId !== toId && !isFull
+
+  const alreadyLinked = (a: string, b: string) =>
+    session.guild.tradeLinks.some(
+      (link) => [link.fromNodeId, link.toNodeId].includes(a) && [link.fromNodeId, link.toNodeId].includes(b),
+    )
+
+  const filteredFrom = branchNodes.filter((n) => n.id !== toId && !alreadyLinked(n.id, toId))
+  const filteredTo = branchNodes.filter((n) => n.id !== fromId && !alreadyLinked(fromId, n.id))
+
   return (
     <div>
       <div className="mt-3 flex flex-col gap-2">
         <select
-          className="w-full rounded-[12px] border border-[#7a5a36]/58 bg-[linear-gradient(180deg,rgba(72,48,30,0.96),rgba(46,31,21,0.94))] px-3 py-2 text-sm text-[#fff4dd] outline-none"
+          className="w-full rounded-[12px] border border-[#7a5a36]/58 bg-[linear-gradient(180deg,rgba(72,48,30,0.96),rgba(46,31,21,0.94))] px-3 py-2 text-sm text-[#fff4dd] outline-none disabled:cursor-not-allowed disabled:opacity-55"
           value={fromId}
+          disabled={isFull}
           onChange={(e) => setFromId(e.target.value)}
         >
           <option value="">选择起点</option>
-          {branchNodes.map((n) => (
+          {filteredFrom.map((n) => (
             <option key={n.id} value={n.id}>{n.name}</option>
           ))}
         </select>
         <select
-          className="w-full rounded-[12px] border border-[#7a5a36]/58 bg-[linear-gradient(180deg,rgba(72,48,30,0.96),rgba(46,31,21,0.94))] px-3 py-2 text-sm text-[#fff4dd] outline-none"
+          className="w-full rounded-[12px] border border-[#7a5a36]/58 bg-[linear-gradient(180deg,rgba(72,48,30,0.96),rgba(46,31,21,0.94))] px-3 py-2 text-sm text-[#fff4dd] outline-none disabled:cursor-not-allowed disabled:opacity-55"
           value={toId}
+          disabled={isFull}
           onChange={(e) => setToId(e.target.value)}
         >
           <option value="">选择终点</option>
-          {branchNodes.map((n) => (
+          {filteredTo.map((n) => (
             <option key={n.id} value={n.id}>{n.name}</option>
           ))}
         </select>
         <button
-          className="action mt-1 w-full"
+          className="action mt-1 w-full disabled:cursor-not-allowed disabled:opacity-45"
           disabled={!canCreate}
           onClick={() => { if (canCreate) { onCreateTradeLink(fromId, toId); setFromId(''); setToId('') } }}
         >
-          开辟商路（维护 {session.config.economy.tradeLinkMaintenance}）
+          {isFull ? '商路已达上限' : `开辟商路（维护 ${session.config.economy.tradeLinkMaintenance}）`}
         </button>
       </div>
       {session.guild.tradeLinks.length > 0 ? (
-        <div className="mt-3 max-h-32 overflow-auto rounded-[14px] border border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(86,58,35,0.92),rgba(55,37,24,0.9))] p-3">
+        <div className="mt-3 overflow-y-auto rounded-[14px] border border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(86,58,35,0.92),rgba(55,37,24,0.9))] p-3">
           <p className="text-[10px] uppercase tracking-[0.22em] text-amber-100/50">现有商路</p>
           <div className="mt-2 grid gap-1.5">
             {session.guild.tradeLinks.map((link) => {
               const from = session.world.nodes.find((n) => n.id === link.fromNodeId)
               const to = session.world.nodes.find((n) => n.id === link.toNodeId)
               return (
-                <div key={link.id} className="text-xs text-[#cdb48a]">
-                  {from?.name ?? '?'} ↔ {to?.name ?? '?'}
-                  <span className="ml-2 text-[#cdb48a]/60">维护 {link.maintenanceCost}</span>
+                <div key={link.id} className="rounded-[10px] border border-[#7b5b39]/30 bg-[linear-gradient(180deg,rgba(75,50,30,0.6),rgba(50,33,22,0.55))] px-3 py-2">
+                  <div className="text-xs text-[#cdb48a]">
+                    {from?.name ?? '?'} ↔ {to?.name ?? '?'}
+                  </div>
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className="text-[10px] text-[#cdb48a]/50">维护 {link.maintenanceCost}</span>
+                    <button
+                      type="button"
+                      onClick={() => onRemoveTradeLink(link.id)}
+                      className="rounded-[8px] border border-[#a0563c]/50 bg-[linear-gradient(180deg,rgba(130,60,35,0.85),rgba(95,40,25,0.8))] px-2 py-0.5 text-[10px] text-[#f0ccb0] transition hover:border-[#c9714a]/60 hover:bg-[linear-gradient(180deg,rgba(155,72,42,0.9),rgba(110,48,30,0.85))]"
+                    >
+                      取消
+                    </button>
+                  </div>
                 </div>
               )
             })}
@@ -1183,145 +1176,6 @@ function SettingsWindow({
   )
 }
 
-function MapSidebar({
-  session,
-  mapMode,
-  revealAll,
-  selectedNode,
-  selectedPool,
-  candidateLinks,
-  rumorTargets,
-  onChangeMode,
-  onToggleReveal,
-  onMoveOrExplore,
-  onEstablishBranch,
-  onBuildBuilding,
-  onCreateTradeLink,
-  onDispatchRetainer,
-  onRepairGate,
-}: {
-  session: GameSession
-  mapMode: MapMode
-  revealAll: boolean
-  selectedNode: ReturnType<typeof getSelectedNode>
-  selectedPool: number
-  candidateLinks: ReturnType<typeof useGameStore> extends never ? never : { id: string; name: string }[]
-  rumorTargets: ReturnType<typeof useGameStore> extends never ? never : GameSession['world']['nodes']
-  onChangeMode: (mode: MapMode) => void
-  onToggleReveal: () => void
-  onMoveOrExplore: (nodeId: string) => void
-  onEstablishBranch: () => void
-  onBuildBuilding: (nodeId: string, type: BuildingType) => void
-  onCreateTradeLink: (nodeId: string) => void
-  onDispatchRetainer: (nodeId: string) => void
-  onRepairGate: () => void
-}) {
-  const currentNode = getCurrentNode(session)
-  return (
-    <div className="grid min-h-0 grid-rows-[auto_auto_1fr] gap-4">
-      <CompactPanel title="地图模式" subtitle="探索 / 商会">
-        <div className="grid grid-cols-2 gap-2">
-          <ModeButton label="探索" active={mapMode === 'explore'} onClick={() => onChangeMode('explore')} />
-          <ModeButton label="商会" active={mapMode === 'guild'} onClick={() => onChangeMode('guild')} />
-        </div>
-        <button className="action mt-4 w-full" onClick={onToggleReveal}>
-          {revealAll ? '关闭全图调试' : '显示全图调试'}
-        </button>
-      </CompactPanel>
-
-      <CompactPanel title="当前选中" subtitle={selectedNode.name}>
-        <div className="grid grid-cols-2 gap-3">
-          <StatChip label="状态" value={selectedNode.discovery === 'confirmed' ? '确认' : selectedNode.discovery === 'rumor' ? '传闻' : '未知'} />
-          <StatChip label="类型" value={nodeTypeLabelMap[selectedNode.type]} />
-          {selectedNode.type === 'town' ? <StatChip label="繁荣" value={selectedNode.prosperity ?? 0} /> : null}
-          <StatChip label="产品池" value={selectedPool} />
-          <StatChip label="商号收益" value={selectedNode.branchId ? getBranchIncome(session, selectedNode.id) : 0} />
-        </div>
-      </CompactPanel>
-
-      {mapMode === 'explore' ? (
-        <section className="min-h-0 rounded-[26px] border border-amber-800/20 bg-[#2b1d12]/78 p-5">
-          <p className="text-xs uppercase tracking-[0.3em] text-amber-100/40">探索动作</p>
-          <div className="mt-4 grid gap-2">
-            {getAdjacentNodes(session, currentNode.id)
-              .filter((item) => revealAll || item.node.discovery !== 'hidden' || item.edge.discovery !== 'hidden')
-              .map(({ edge, node }) => (
-                <button
-                  key={edge.id}
-                  className="flex items-center justify-between rounded-2xl border border-amber-800/20 bg-[#f7edd7]/6 px-4 py-3 text-left text-sm text-[#fff4dd] hover:bg-amber-400/10"
-                  onClick={() => onMoveOrExplore(node.id)}
-                >
-                  <span>{node.name}</span>
-                  <span className="text-xs text-[#cdb48a]">{node.discovery === 'confirmed' ? '移动' : '探索并前往'}</span>
-                </button>
-              ))}
-          </div>
-          <div className="mt-4 rounded-2xl border border-amber-800/20 bg-[#f7edd7]/6 px-4 py-3 text-sm text-[#ead8ba]">
-            地图上已经直接标出了当前驻留位置，因此这里不再重复显示“当前城市”窗口。
-          </div>
-        </section>
-      ) : (
-        <section className="min-h-0 rounded-[26px] border border-amber-800/20 bg-[#2b1d12]/78 p-5">
-          <p className="text-xs uppercase tracking-[0.3em] text-amber-100/40">商会动作</p>
-          <div className="mt-4 grid gap-3">
-            {!selectedNode.branchId && selectedNode.id === currentNode.id && currentNode.type === 'town' ? (
-              <button className="action" onClick={onEstablishBranch}>在当前据点设立商号</button>
-            ) : null}
-
-            {selectedNode.branchId ? (
-              <div className="grid grid-cols-2 gap-2">
-                {buildingOptions.map((building) => (
-                  <button
-                    key={building.type}
-                    className="rounded-2xl border border-amber-800/20 bg-[#f7edd7]/6 px-3 py-3 text-sm text-[#fff4dd] hover:bg-amber-400/10"
-                    onClick={() => onBuildBuilding(selectedNode.id, building.type)}
-                  >
-                    {building.label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-
-            <div className="rounded-2xl border border-amber-800/20 bg-[#f7edd7]/6 px-4 py-3 text-sm text-[#ead8ba]">
-              贸易连接已建立 {session.guild.tradeLinks.length}/{session.player.tradeLinkCapacity}
-            </div>
-
-            <div className="grid gap-2">
-              {candidateLinks.slice(0, 4).map((node) => (
-                <button
-                  key={node.id}
-                  className="flex items-center justify-between rounded-2xl border border-amber-800/20 bg-[#f7edd7]/6 px-4 py-3 text-sm text-[#fff4dd] hover:bg-amber-400/10"
-                  onClick={() => onCreateTradeLink(node.id)}
-                >
-                  <span>连接 {node.name}</span>
-                  <span className="text-xs text-[#cdb48a]">维护 {session.config.economy.tradeLinkMaintenance}</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="grid gap-2">
-              {rumorTargets.slice(0, 3).map((node) => (
-                <button
-                  key={node.id}
-                  className="flex items-center justify-between rounded-2xl border border-amber-800/20 bg-[#f7edd7]/6 px-4 py-3 text-sm text-[#fff4dd] hover:bg-amber-400/10"
-                  onClick={() => onDispatchRetainer(node.id)}
-                >
-                  <span>派供奉确认 {node.name}</span>
-                  <span className="text-xs text-[#cdb48a]">代办</span>
-                </button>
-              ))}
-            </div>
-
-            <button className="action" onClick={onRepairGate}>
-              {session.world.finalObjectiveCompleted ? '终局工程已完成' : '投入 1200 灵石修复传送阵'}
-            </button>
-          </div>
-        </section>
-      )}
-    </div>
-  )
-}
-
 function SceneAction({
   title,
   subtitle,
@@ -1361,7 +1215,7 @@ function ModeButton({ label, active, onClick }: { label: string; active: boolean
         'rounded-[12px] border px-4 py-2 text-sm transition',
         active
           ? 'border-[#c19154]/65 bg-[linear-gradient(180deg,rgba(99,65,38,0.98),rgba(61,40,25,0.95))] text-[#fff4dd]'
-          : 'border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(85,57,35,0.88),rgba(54,36,24,0.86))] text-[#d8c2a0] hover:border-[#b8884d]/55 hover:bg-[linear-gradient(180deg,rgba(98,66,40,0.92),rgba(62,41,27,0.9))]',
+          : 'border-[#7a5a36]/55 bg-[linear-gradient(180deg,rgba(85,57,35,0.88),rgba(54,36,24,0.86))] text-[#d8c2a0] hover:border-[#c19154]/65 hover:bg-[linear-gradient(180deg,rgba(98,66,40,0.92),rgba(62,41,27,0.9))]',
       ].join(' ')}
     >
       {label}

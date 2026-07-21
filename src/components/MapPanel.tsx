@@ -102,7 +102,7 @@ export default function MapPanel({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              className={cn('rounded-full border border-amber-900/25 bg-white/40 text-amber-950 transition hover:bg-white/60', compact ? 'h-8 w-8 text-sm' : 'h-9 w-9 text-base')}
+              className={cn('rounded-full border border-amber-900/25 bg-[#a87c50]/40 text-amber-950 transition hover:bg-[#a87c50]/60', compact ? 'h-8 w-8 text-sm' : 'h-9 w-9 text-base')}
               onClick={() => setZoom((value) => clampZoom(value - 0.1))}
               aria-label="缩小地图"
             >
@@ -110,7 +110,7 @@ export default function MapPanel({
             </button>
             <button
               type="button"
-              className={cn('rounded-full border border-amber-900/25 bg-white/40 text-amber-950 transition hover:bg-white/60', compact ? 'h-8 w-8 text-sm' : 'h-9 w-9 text-base')}
+              className={cn('rounded-full border border-amber-900/25 bg-[#a87c50]/40 text-amber-950 transition hover:bg-[#a87c50]/60', compact ? 'h-8 w-8 text-sm' : 'h-9 w-9 text-base')}
               onClick={() => {
                 setZoom(initialZoom)
                 setPan({ x: 0, y: 0 })
@@ -121,7 +121,7 @@ export default function MapPanel({
             </button>
             <button
               type="button"
-              className={cn('rounded-full border border-amber-900/25 bg-white/40 text-amber-950 transition hover:bg-white/60', compact ? 'h-8 w-8 text-sm' : 'h-9 w-9 text-base')}
+              className={cn('rounded-full border border-amber-900/25 bg-[#a87c50]/40 text-amber-950 transition hover:bg-[#a87c50]/60', compact ? 'h-8 w-8 text-sm' : 'h-9 w-9 text-base')}
               onClick={() => setZoom((value) => clampZoom(value + 0.1))}
               aria-label="放大地图"
             >

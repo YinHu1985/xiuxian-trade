@@ -136,7 +136,7 @@ export default function NewGamePage({ onNavigate }: { onNavigate: (page: 'game' 
               createSession(config, guildName.trim() || '太虚商会')
               onNavigate('game')
             }}
-            className="rounded-[16px] border border-[#c19154]/45 bg-[linear-gradient(180deg,rgba(122,83,44,0.98),rgba(81,54,29,0.96))] px-6 py-3 text-sm text-[#fff4dd] transition hover:border-[#ecc98a] hover:bg-[linear-gradient(180deg,rgba(143,96,50,0.99),rgba(92,62,33,0.97))]"
+            className="rounded-[16px] border border-[#c19154]/45 bg-[linear-gradient(180deg,rgba(122,83,44,0.98),rgba(81,54,29,0.96))] px-6 py-3 text-sm text-[#fff4dd] transition hover:border-[#d8b073] hover:bg-[linear-gradient(180deg,rgba(143,96,50,0.99),rgba(92,62,33,0.97))]"
           >
             开始新局
           </button>

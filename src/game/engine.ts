@@ -412,6 +412,17 @@ export function createTradeLinkBetween(session: GameSession, fromNodeId: string,
   return next
 }
 
+export function removeTradeLink(session: GameSession, linkId: string) {
+  const next = cloneSession(session)
+  const idx = next.guild.tradeLinks.findIndex((link) => link.id === linkId)
+  if (idx === -1) return next
+  const [removed] = next.guild.tradeLinks.splice(idx, 1)
+  const from = getNode(next, removed.fromNodeId)
+  const to = getNode(next, removed.toNodeId)
+  addLog(next, `商会取消了 ${from?.name ?? '?'} 与 ${to?.name ?? '?'} 间的商路连接。`)
+  return next
+}
+
 export function dispatchRetainer(session: GameSession, targetNodeId: string) {
   const next = cloneSession(session)
   const target = getNode(next, targetNodeId)

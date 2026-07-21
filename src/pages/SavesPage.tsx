@@ -30,12 +30,12 @@ export default function SavesPage({ onNavigate }: { onNavigate: (page: 'game' | 
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(120,53,15,0.18),rgba(2,6,23,1)_58%)] px-6 py-8 text-slate-50">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(120,53,15,0.18),transparent_24%),linear-gradient(180deg,#22170f,#140d08)] px-6 py-8 text-[#f7edd7]">
       <div className="mx-auto max-w-6xl">
-        <header className="rounded-[32px] border border-amber-300/15 bg-slate-950/70 p-8">
+        <header className="rounded-[28px] border border-[#7a5a36]/55 bg-[linear-gradient(180deg,rgba(51,35,23,0.97),rgba(29,20,13,0.96))] p-8">
           <p className="text-xs uppercase tracking-[0.35em] text-amber-200/55">存档</p>
-          <h1 className="mt-4 font-serif text-4xl text-amber-50">本地存档与 JSON 管理</h1>
-          <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-300">
+          <h1 className="mt-4 font-serif text-4xl text-[#fff4dd]">本地存档与 JSON 管理</h1>
+          <p className="mt-4 max-w-3xl text-sm leading-7 text-[#d9c39f]">
             支持本地读档、多存档位，以及 JSON 导入导出。导入时会自动校验基础结构并写回本地存档列表。
           </p>
         </header>
@@ -44,11 +44,11 @@ export default function SavesPage({ onNavigate }: { onNavigate: (page: 'game' | 
           <div className="space-y-4">
             {saveCards.length ? (
               saveCards.map((save) => (
-                <article key={save.id} className="rounded-[24px] border border-white/8 bg-slate-950/72 p-5">
+                <article key={save.id} className="rounded-[24px] border border-[#7a5a36]/55 bg-[linear-gradient(180deg,rgba(51,35,23,0.97),rgba(29,20,13,0.96))] p-5">
                   <div className="flex flex-wrap items-center justify-between gap-4">
                     <div>
-                      <h2 className="font-serif text-xl text-white">{save.title}</h2>
-                      <p className="mt-2 text-sm text-slate-400">
+                      <h2 className="font-serif text-xl text-[#fff4dd]">{save.title}</h2>
+                      <p className="mt-2 text-sm text-[#cdb48a]">
                         回合 {save.turn} · 灵石 {save.spiritStone} · 已确认据点 {save.exploredNodes}
                       </p>
                     </div>
@@ -61,16 +61,16 @@ export default function SavesPage({ onNavigate }: { onNavigate: (page: 'game' | 
                 </article>
               ))
             ) : (
-              <div className="rounded-[24px] border border-dashed border-white/10 bg-slate-950/60 p-10 text-sm text-slate-400">
+              <div className="rounded-[24px] border border-dashed border-[#7a5a36]/40 bg-[linear-gradient(180deg,rgba(51,35,23,0.97),rgba(29,20,13,0.96))] p-10 text-sm text-[#cdb48a]">
                 当前没有本地存档。先开始一局并在主界面保存。
               </div>
             )}
           </div>
 
-          <section className="rounded-[24px] border border-white/8 bg-slate-950/72 p-5">
-            <h2 className="font-serif text-xl text-white">导入 JSON</h2>
+          <section className="rounded-[24px] border border-[#7a5a36]/55 bg-[linear-gradient(180deg,rgba(51,35,23,0.97),rgba(29,20,13,0.96))] p-5">
+            <h2 className="font-serif text-xl text-[#fff4dd]">导入 JSON</h2>
             <textarea
-              className="mt-4 h-80 w-full rounded-[20px] border border-white/10 bg-slate-950/80 p-4 text-sm text-slate-100 outline-none"
+              className="mt-4 h-80 w-full rounded-[20px] border border-[#7a5a36]/40 bg-[linear-gradient(180deg,rgba(42,28,18,0.95),rgba(30,20,13,0.93))] p-4 text-sm text-[#e6d3b0] outline-none placeholder:text-[#cdb48a]"
               value={rawJson}
               onChange={(event) => setRawJson(event.target.value)}
               placeholder="将导出的存档 JSON 粘贴到这里"

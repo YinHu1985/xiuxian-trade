@@ -26,7 +26,6 @@ export default function TopBar({
 }: TopBarProps) {
   return (
     <header className="relative overflow-hidden rounded-[18px] border border-[#7a5a36]/60 bg-[linear-gradient(180deg,rgba(51,34,22,0.98),rgba(32,21,14,0.96))] px-5 py-3 shadow-[0_16px_42px_rgba(28,17,8,0.34)]">
-      <div className="pointer-events-none absolute inset-[1px] rounded-[17px] border border-[#f0d5a0]/10" />
       <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(255,230,180,0.4),transparent)]" />
       <div className="grid grid-cols-[auto_minmax(0,1.95fr)_124px] grid-rows-[auto_auto] gap-x-6 gap-y-2">
         <div className="row-span-2 flex min-w-0 items-center gap-3">
@@ -73,7 +72,7 @@ export default function TopBar({
               type="button"
               onClick={onExecuteTurn}
               disabled={isExecutingPlan}
-              className="flex h-full min-h-[88px] w-[112px] flex-col items-center justify-center rounded-[14px] border border-[#d0a566]/72 bg-[linear-gradient(180deg,rgba(122,83,44,0.98),rgba(81,54,29,0.96))] px-3 py-3 text-[#fff4dd] shadow-[0_10px_24px_rgba(24,14,8,0.24)] transition hover:border-[#ecc98a] hover:bg-[linear-gradient(180deg,rgba(143,96,50,0.99),rgba(92,62,33,0.97))] disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex h-full min-h-[88px] w-[112px] flex-col items-center justify-center rounded-[14px] border border-[#be8b50]/75 bg-[linear-gradient(180deg,rgba(122,83,44,0.98),rgba(81,54,29,0.96))] px-3 py-3 text-[#fff4dd] shadow-[0_10px_24px_rgba(24,14,8,0.24)] transition hover:border-[#d8b073] hover:bg-[linear-gradient(180deg,rgba(143,96,50,0.99),rgba(92,62,33,0.97))] disabled:cursor-not-allowed disabled:opacity-60"
             >
               <FastForward size={16} />
               <span className="mt-1 text-sm font-medium">{hasPendingPlan ? '执行计划' : '过回合'}</span>
@@ -107,8 +106,8 @@ function MainNavButton({
       className={[
         'rounded-[12px] border px-4 py-2 text-center transition',
         active
-          ? 'border-[#c5975d]/70 bg-[linear-gradient(180deg,rgba(92,60,34,0.98),rgba(58,38,24,0.95))] text-[#fff4dd] shadow-[0_0_30px_rgba(251,191,36,0.08),inset_0_1px_0_rgba(255,231,188,0.08)]'
-          : 'border-[#5f452c]/60 bg-[linear-gradient(180deg,rgba(54,36,23,0.94),rgba(34,23,16,0.94))] text-[#d6c19d] shadow-[inset_0_1px_0_rgba(255,231,188,0.02)] hover:border-[#84603a]/62 hover:bg-[linear-gradient(180deg,rgba(66,44,27,0.96),rgba(40,27,18,0.95))] hover:text-[#efe0c1]',
+          ? 'border-[#c5975d]/70 bg-[linear-gradient(180deg,rgba(92,60,34,0.98),rgba(58,38,24,0.95))] text-[#fff4dd] shadow-[0_0_30px_rgba(251,191,36,0.08)]'
+          : 'border-[#5f452c]/60 bg-[linear-gradient(180deg,rgba(54,36,23,0.94),rgba(34,23,16,0.94))] text-[#d6c19d] hover:border-[#84603a]/62 hover:bg-[linear-gradient(180deg,rgba(66,44,27,0.96),rgba(40,27,18,0.95))] hover:text-[#efe0c1]',
       ].join(' ')}
     >
       <div className="font-serif text-base">{label}</div>
