@@ -3,8 +3,8 @@ export type DiscoveryState = 'hidden' | 'rumor' | 'confirmed'
 export type ProductCategory = 'herb' | 'ore' | 'pelt' | 'essence' | 'talisman' | 'elixir' | 'equipment'
 export type Realm = 'qi' | 'foundation' | 'golden' | 'nascent'
 export type BuildingType = 'hub' | 'alchemy' | 'forge' | 'sigil' | 'auction'
-export type RetainerStatus = 'idle' | 'busy'
-export type TurnPlanType = 'travel' | 'retainer' | 'repair-gate'
+export type RetainerStatus = 'idle' | 'busy' | 'trade'
+export type TurnPlanType = 'travel' | 'retainer' | 'repair-gate' | 'building'
 
 export interface ProductDefinition {
   id: string
@@ -55,6 +55,34 @@ export interface CargoItem {
   cost: number
 }
 
+export type QuestType = 'purchase' | 'deliver' | 'trade'
+
+export interface PlayerItem {
+  id: string
+  name: string
+  stackable: boolean
+  count: number
+  data?: Record<string, string>
+}
+
+export interface QuestState {
+  id: string
+  type: QuestType
+  nodeId: string
+  npcName: string
+  title: string
+  intro: string
+  acceptPrompt: string
+  completePrompt: string
+  reward: number
+  status: 'available' | 'active' | 'completed'
+  productId?: string
+  count?: number
+  targetNodeId?: string
+  letterItemId?: string
+  tradeAction?: 'buy' | 'sell'
+}
+
 export interface BuildingState {
   id: string
   type: BuildingType
@@ -86,6 +114,7 @@ export interface RetainerState {
 export interface TurnPlanState {
   type: TurnPlanType
   targetNodeId?: string
+  buildingType?: BuildingType
 }
 
 export interface PlayerState {
@@ -94,6 +123,7 @@ export interface PlayerState {
   moveRange: number
   cargoCapacity: number
   cargo: CargoItem[]
+  items: PlayerItem[]
   tradeLinkCapacity: number
   retainerCapacity: number
 }
@@ -104,6 +134,7 @@ export interface GuildState {
   buildings: BuildingState[]
   tradeLinks: TradeLinkState[]
   retainers: RetainerState[]
+  quests: QuestState[]
 }
 
 export interface WorldState {
@@ -117,6 +148,7 @@ export interface WorldState {
   logs: string[]
   finalObjectiveUnlocked: boolean
   finalObjectiveCompleted: boolean
+  lastMoveRangeUpgradeUnlocked: boolean
   ending?: EndingState
 }
 
@@ -159,6 +191,9 @@ export interface EconomyConfig {
   baseIncomePerProduct: number
   auctionBonus: number
   tradeLinkMaintenance: number
+  retainerUpgradeBaseCost: number
+  cargoUpgradeBaseCost: number
+  moveRangeUpgradeBaseCost: number
 }
 
 export interface MarketConfig {

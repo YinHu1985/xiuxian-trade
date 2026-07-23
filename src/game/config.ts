@@ -15,9 +15,9 @@ export const defaultConfig: GameConfig = {
     maxTurns: 80,
     initialMoveRange: 1,
     initialSpiritStone: 520,
-    cargoCapacity: 8,
+    cargoCapacity: 2,
     startingTradeLinkCapacity: 1,
-    startingRetainerCapacity: 1,
+    startingRetainerCapacity: 2,
     finalObjectiveProsperityThreshold: 3,
   },
   economy: {
@@ -25,6 +25,9 @@ export const defaultConfig: GameConfig = {
     baseIncomePerProduct: 11,
     auctionBonus: 0.2,
     tradeLinkMaintenance: 12,
+    retainerUpgradeBaseCost: 200,
+    cargoUpgradeBaseCost: 120,
+    moveRangeUpgradeBaseCost: 180,
   },
   market: {
     minModifier: 0.5,

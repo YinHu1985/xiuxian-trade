@@ -11,7 +11,7 @@ const fields: { label: string; path: NumericPath; step?: number; min?: number; m
   { label: '平均连接度', path: ['map', 'averageConnections'], step: 0.1, min: 1.8, max: 4.2 },
   { label: '总回合数', path: ['progress', 'maxTurns'], step: 1, min: 40, max: 120 },
   { label: '初始灵石', path: ['progress', 'initialSpiritStone'], step: 10, min: 200, max: 1200 },
-  { label: '初始货仓', path: ['progress', 'cargoCapacity'], step: 1, min: 4, max: 16 },
+  { label: '初始货仓', path: ['progress', 'cargoCapacity'], step: 1, min: 2, max: 8 },
   { label: '原产地折扣', path: ['economy', 'originDiscount'], step: 0.05, min: 0.3, max: 0.7 },
   { label: '基础收益系数', path: ['economy', 'baseIncomePerProduct'], step: 1, min: 6, max: 20 },
   { label: '贸易维护费', path: ['economy', 'tradeLinkMaintenance'], step: 1, min: 4, max: 30 },

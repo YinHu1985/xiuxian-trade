@@ -44,7 +44,7 @@ export default function TopBar({
           <Stat icon={<Gem size={14} />} label="灵石" value={session.player.spiritStone} />
           <Stat icon={<Compass size={14} />} label="移动" value={session.player.moveRange} />
           <Stat icon={<UserRound size={14} />} label="供奉" value={`${session.guild.retainers.length}/${session.player.retainerCapacity}`} />
-          <Stat icon={<Network size={14} />} label="商路" value={`${session.guild.tradeLinks.length}/${session.player.tradeLinkCapacity}`} />
+          <Stat icon={<Network size={14} />} label="商路" value={session.guild.tradeLinks.length} />
           {onOpenSettings ? (
             <button
               type="button"

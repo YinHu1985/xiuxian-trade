@@ -1,14 +1,19 @@
 import { create } from 'zustand'
 import { defaultConfig, mergeConfig } from '@/game/config'
 import {
-  buildBranchBuilding,
+  acceptQuest,
   clearPendingPlan,
+  completeQuest,
   createTradeLink,
   createTradeLinkBetween,
   donateToCity,
   executePendingPlan,
   establishBranch,
+  increaseCargoCapacity,
+  increaseMoveRange,
+  increaseRetainerCapacity,
   removeTradeLink,
+  scheduleConstruction,
   scheduleRepairGate,
   scheduleRetainerDispatch,
   scheduleTravel,
@@ -38,10 +43,15 @@ interface GameStore {
   createTradeLink: (targetNodeId: string) => void
   createTradeLinkBetween: (fromNodeId: string, toNodeId: string) => void
   removeTradeLink: (linkId: string) => void
+  increaseRetainerCapacity: () => void
+  increaseCargoCapacity: () => void
+  increaseMoveRange: () => void
   scheduleRetainerDispatch: (targetNodeId: string) => void
   scheduleRepairGate: () => void
   clearPendingPlan: () => void
   executePendingPlan: () => void
+  acceptQuest: (questId: string) => void
+  completeQuest: (questId: string) => void
   saveCurrent: (title: string, existingId?: string) => void
   loadSaveById: (id: string) => void
   deleteSaveById: (id: string) => void
@@ -65,18 +75,26 @@ export const useGameStore = create<GameStore>((set, get) => ({
   establishBranch: () => set((state) => ({ session: state.session ? establishBranch(state.session) : null })),
   donateToCity: () => set((state) => ({ session: state.session ? donateToCity(state.session) : null })),
   buildBuilding: (nodeId, type) =>
-    set((state) => ({ session: state.session ? buildBranchBuilding(state.session, nodeId, type) : null })),
+    set((state) => ({ session: state.session ? scheduleConstruction(state.session, nodeId, type) : null })),
   createTradeLink: (targetNodeId) =>
     set((state) => ({ session: state.session ? createTradeLink(state.session, targetNodeId) : null })),
   createTradeLinkBetween: (fromNodeId, toNodeId) =>
     set((state) => ({ session: state.session ? createTradeLinkBetween(state.session, fromNodeId, toNodeId) : null })),
   removeTradeLink: (linkId) =>
     set((state) => ({ session: state.session ? removeTradeLink(state.session, linkId) : null })),
+  increaseRetainerCapacity: () =>
+    set((state) => ({ session: state.session ? increaseRetainerCapacity(state.session) : null })),
+  increaseCargoCapacity: () =>
+    set((state) => ({ session: state.session ? increaseCargoCapacity(state.session) : null })),
+  increaseMoveRange: () =>
+    set((state) => ({ session: state.session ? increaseMoveRange(state.session) : null })),
   scheduleRetainerDispatch: (targetNodeId) =>
     set((state) => ({ session: state.session ? scheduleRetainerDispatch(state.session, targetNodeId) : null })),
   scheduleRepairGate: () => set((state) => ({ session: state.session ? scheduleRepairGate(state.session) : null })),
   clearPendingPlan: () => set((state) => ({ session: state.session ? clearPendingPlan(state.session) : null })),
   executePendingPlan: () => set((state) => ({ session: state.session ? executePendingPlan(state.session) : null })),
+  acceptQuest: (questId) => set((state) => ({ session: state.session ? acceptQuest(state.session, questId) : null })),
+  completeQuest: (questId) => set((state) => ({ session: state.session ? completeQuest(state.session, questId) : null })),
   saveCurrent: (title, existingId) => {
     const { session } = get()
     if (!session) return

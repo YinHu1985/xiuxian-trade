@@ -9,7 +9,9 @@ import type {
   MarketModifierState,
   NodeState,
   NodeType,
+  PlayerItem,
   PlayerState,
+  QuestState,
 } from '@/game/types'
 
 function createRng(seed: number) {
@@ -450,6 +452,7 @@ export function createNewGame(config: GameConfig = defaultConfig, seed = Date.no
     moveRange: config.progress.initialMoveRange,
     cargoCapacity: config.progress.cargoCapacity,
     cargo: [] as CargoItem[],
+    items: [] as PlayerItem[],
     tradeLinkCapacity: config.progress.startingTradeLinkCapacity,
     retainerCapacity: config.progress.startingRetainerCapacity,
   }
@@ -459,6 +462,7 @@ export function createNewGame(config: GameConfig = defaultConfig, seed = Date.no
     branches: [],
     buildings: [],
     tradeLinks: [],
+    quests: [] as QuestState[],
     retainers: Array.from({ length: config.progress.startingRetainerCapacity }, (_, index) => ({
       id: `retainer-${index}`,
       name: `供奉${index + 1}`,
@@ -483,6 +487,7 @@ export function createNewGame(config: GameConfig = defaultConfig, seed = Date.no
       logs: ['你获得了限期开拓许可，商会飞舟从起始城镇启航。'],
       finalObjectiveUnlocked: false,
       finalObjectiveCompleted: false,
+      lastMoveRangeUpgradeUnlocked: false,
     },
   }
 

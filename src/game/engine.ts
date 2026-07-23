@@ -1,11 +1,13 @@
-import { allCategories, productMap } from '@/game/data'
+import { allCategories, getRandomNpcName, itemDefinitions, productMap } from '@/game/data'
 import type {
   BranchState,
   BuildingType,
   EdgeState,
   GameSession,
   NodeState,
+  PlayerItem,
   ProductCategory,
+  QuestType,
   TurnPlanState,
 } from '@/game/types'
 
@@ -360,26 +362,54 @@ export function donateToCity(session: GameSession) {
   return next
 }
 
-export function buildBranchBuilding(session: GameSession, nodeId: string, type: BuildingType) {
+export function scheduleConstruction(session: GameSession, nodeId: string, type: BuildingType) {
   const next = cloneSession(session)
   const branch = getBranch(next, nodeId)
   const node = getNode(next, nodeId)
   if (!branch || !node || getBuilding(branch, next, type)) return next
+  const usedSlots = next.guild.tradeLinks.length + next.guild.retainers.filter((r) => r.status === 'busy').length
+  const idleRetainers = next.player.retainerCapacity - usedSlots
+  if (idleRetainers <= 0) return next
   const costMap: Record<BuildingType, number> = { hub: 120, alchemy: 150, forge: 160, sigil: 150, auction: 220 }
   const cost = costMap[type] + (node.prosperity ?? 0) * 20
   if (next.player.spiritStone < cost) return next
-  next.player.spiritStone -= cost
-  const buildingId = `${type}-${nodeId}`
-  next.guild.buildings.push({ id: buildingId, type, level: 1, enabled: true })
-  branch.buildingIds.push(buildingId)
-  addLog(next, `商号新建了 ${type === 'hub' ? '集散行' : type === 'alchemy' ? '丹房' : type === 'forge' ? '器坊' : type === 'sigil' ? '符坊' : '拍卖行'}。`)
+  next.world.pendingPlan = { type: 'building', targetNodeId: nodeId, buildingType: type }
+  addLog(next, `已安排匠人于下回合修建${type === 'hub' ? '集散行' : type === 'alchemy' ? '丹房' : type === 'forge' ? '器坊' : type === 'sigil' ? '符坊' : '拍卖行'}，需耗时一回合。`)
   return next
+}
+
+function executeConstruction(session: GameSession) {
+  const plan = session.world.pendingPlan
+  if (!plan || plan.type !== 'building') return session
+  const branch = getBranch(session, plan.targetNodeId!)
+  const node = getNode(session, plan.targetNodeId!)
+  const type = plan.buildingType!
+  if (!branch || !node || getBuilding(branch, session, type)) return session
+  const costMap: Record<BuildingType, number> = { hub: 120, alchemy: 150, forge: 160, sigil: 150, auction: 220 }
+  const cost = costMap[type] + (node.prosperity ?? 0) * 20
+  if (session.player.spiritStone < cost) return session
+  session.player.spiritStone -= cost
+  const buildingId = `${type}-${plan.targetNodeId}`
+  session.guild.buildings.push({ id: buildingId, type, level: 1, enabled: true })
+  branch.buildingIds.push(buildingId)
+  const retainer = session.guild.retainers.find((r) => r.status === 'idle')
+  if (retainer) {
+    retainer.status = 'busy'
+    retainer.remainingTurns = 1
+    retainer.targetNodeId = plan.targetNodeId
+  }
+  addLog(
+    session,
+    `商号新建了 ${type === 'hub' ? '集散行' : type === 'alchemy' ? '丹房' : type === 'forge' ? '器坊' : type === 'sigil' ? '符坊' : '拍卖行'}，一名供奉已前往督造（下回合回归）。`,
+  )
+  return session
 }
 
 export function createTradeLink(session: GameSession, targetNodeId: string) {
   const next = cloneSession(session)
   const current = getCurrentNode(next)
-  if (!getBranch(next, current.id) || !getBranch(next, targetNodeId) || next.guild.tradeLinks.length >= next.player.tradeLinkCapacity) return next
+  const usedSlots = next.guild.tradeLinks.length + next.guild.retainers.filter((r) => r.status === 'busy').length
+  if (!getBranch(next, current.id) || !getBranch(next, targetNodeId) || usedSlots >= next.player.retainerCapacity) return next
   if (!hasPath(next, current.id, targetNodeId)) return next
   if (next.guild.tradeLinks.some((link) => [link.fromNodeId, link.toNodeId].includes(current.id) && [link.fromNodeId, link.toNodeId].includes(targetNodeId))) return next
   next.guild.tradeLinks.push({
@@ -396,7 +426,9 @@ export function createTradeLinkBetween(session: GameSession, fromNodeId: string,
   const next = cloneSession(session)
   const fromBranch = getBranch(next, fromNodeId)
   const toBranch = getBranch(next, toNodeId)
-  if (!fromBranch || !toBranch || next.guild.tradeLinks.length >= next.player.tradeLinkCapacity) return next
+  if (!fromBranch || !toBranch) return next
+  const usedSlots = next.guild.tradeLinks.length + next.guild.retainers.filter((r) => r.status === 'busy').length
+  if (usedSlots >= next.player.retainerCapacity) return next
   if (!hasPath(next, fromNodeId, toNodeId)) return next
   const exists = next.guild.tradeLinks.some(
     (link) => [link.fromNodeId, link.toNodeId].includes(fromNodeId) && [link.fromNodeId, link.toNodeId].includes(toNodeId),
@@ -420,6 +452,51 @@ export function removeTradeLink(session: GameSession, linkId: string) {
   const from = getNode(next, removed.fromNodeId)
   const to = getNode(next, removed.toNodeId)
   addLog(next, `商会取消了 ${from?.name ?? '?'} 与 ${to?.name ?? '?'} 间的商路连接。`)
+  return next
+}
+
+export function increaseRetainerCapacity(session: GameSession) {
+  const next = cloneSession(session)
+  const currentCapacity = next.player.retainerCapacity
+  const cost = next.config.economy.retainerUpgradeBaseCost * (currentCapacity - 1)
+  if (next.player.spiritStone < cost) return next
+  next.player.spiritStone -= cost
+  next.player.retainerCapacity += 1
+  next.guild.retainers.push({
+    id: `retainer-${next.guild.retainers.length}`,
+    name: `供奉${currentCapacity + 1}`,
+    status: 'idle',
+    remainingTurns: 0,
+  })
+  addLog(next, `强化了飞舟聚灵阵，供奉编制增加至 ${next.player.retainerCapacity} 人。`)
+  return next
+}
+
+export function increaseCargoCapacity(session: GameSession) {
+  const next = cloneSession(session)
+  if (next.player.cargoCapacity >= 5) return next
+  const cost = next.config.economy.cargoUpgradeBaseCost * (next.player.cargoCapacity - 1)
+  if (next.player.spiritStone < cost) return next
+  next.player.spiritStone -= cost
+  next.player.cargoCapacity += 1
+  addLog(next, `扩建了飞舟货仓，容量增加至 ${next.player.cargoCapacity}。`)
+  return next
+}
+
+export function increaseMoveRange(session: GameSession) {
+  const next = cloneSession(session)
+  const current = next.player.moveRange
+  if (current >= 10) return next
+  if (current === 3 && !next.world.lastMoveRangeUpgradeUnlocked) return next
+  const cost = next.config.economy.moveRangeUpgradeBaseCost * current
+  if (next.player.spiritStone < cost) return next
+  next.player.spiritStone -= cost
+  next.player.moveRange = current === 3 ? 10 : current + 1
+  if (next.player.moveRange === 10) {
+    addLog(next, `飞舟动力法阵完成最终突破，移动力骤升至 10！`)
+  } else {
+    addLog(next, `强化了飞舟动力法阵，移动力提升至 ${next.player.moveRange}。`)
+  }
   return next
 }
 
@@ -508,6 +585,24 @@ export function describePendingPlan(session: GameSession, plan: TurnPlanState | 
     }
   }
 
+  if (plan.type === 'building') {
+    const buildingLabel =
+      plan.buildingType === 'hub'
+        ? '集散行'
+        : plan.buildingType === 'alchemy'
+          ? '丹房'
+          : plan.buildingType === 'forge'
+            ? '器坊'
+            : plan.buildingType === 'sigil'
+              ? '符坊'
+              : '拍卖行'
+    return {
+      title: `修建 ${buildingLabel}`,
+      detail: '将占用一名供奉一回合进行督造，下回合完工后供奉回归。',
+      actionLabel: `执行修建：${buildingLabel}`,
+    }
+  }
+
   return {
     title: '修复传送阵',
     detail: '下回合投入 1200 灵石，推进终局工程。',
@@ -525,6 +620,7 @@ export function executePendingPlan(session: GameSession) {
 
   if (plan.type === 'travel' && plan.targetNodeId) return moveOrExplore(session, plan.targetNodeId)
   if (plan.type === 'retainer' && plan.targetNodeId) return dispatchRetainer(session, plan.targetNodeId)
+  if (plan.type === 'building') return executeConstruction(session)
   if (plan.type === 'repair-gate') return repairGate(session)
 
   const next = cloneSession(session)
@@ -627,4 +723,328 @@ export function getTravelOption(session: GameSession, targetNodeId: string) {
     target,
     reason: `超出本回合移动范围（当前可跨 ${session.player.moveRange} 段确认道路）。`,
   }
+}
+
+/* ====================== 物品系统 ====================== */
+
+export function addPlayerItem(session: GameSession, name: string, stackable: boolean, data?: Record<string, string>) {
+  if (stackable) {
+    const existing = session.player.items.find((item) => item.name === name && item.stackable)
+    if (existing) {
+      existing.count += 1
+      return existing
+    }
+  }
+  const id = `item-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const item: PlayerItem = { id, name, stackable, count: 1, data }
+  session.player.items.push(item)
+  return item
+}
+
+export function removePlayerItem(session: GameSession, itemId: string) {
+  const idx = session.player.items.findIndex((item) => item.id === itemId)
+  if (idx === -1) return
+  const item = session.player.items[idx]
+  if (item.count > 1) {
+    item.count -= 1
+    return
+  }
+  session.player.items.splice(idx, 1)
+}
+
+export function hasItem(session: GameSession, name: string) {
+  return session.player.items.some((item) => item.name === name && item.count > 0)
+}
+
+export function getItemCount(session: GameSession, name: string) {
+  return session.player.items
+    .filter((item) => item.name === name)
+    .reduce((sum, item) => sum + item.count, 0)
+}
+
+/* ====================== 任务系统 ====================== */
+
+function createRngForSeed(seed: number) {
+  let value = seed % 2147483647
+  if (value <= 0) value += 2147483646
+  return () => {
+    value = (value * 16807) % 2147483647
+    return (value - 1) / 2147483646
+  }
+}
+
+function getNodeQuestTemplates(node: NodeState, session: GameSession) {
+  const rng = createRngForSeed(session.world.seed + node.id.split('-').reduce((a, b) => a + parseInt(b, 36), 0))
+  const npcName = getRandomNpcName(rng)
+  const templates: Array<{
+    type: QuestType
+    title: string
+    intro: string
+    acceptPrompt: string
+    completePrompt: string
+    productId?: string
+    targetNodeId?: string
+    tradeAction?: 'buy' | 'sell'
+  }> = []
+
+  // 1. 收购任务：收购该据点特产的一仓商品
+  const tradables = getTradableProducts(session, node)
+  if (tradables.length > 0) {
+    const targetProductId = tradables[Math.floor(rng() * tradables.length)]
+    const product = productMap[targetProductId]
+    templates.push({
+      type: 'purchase',
+      title: `收购${product.name}`,
+      intro: `${npcName}搓了搓手，压低声音道：「这位东家，老夫正在收一批${product.name}，要是您手头有货，开个实惠价，老夫比市面上多出三成收了，如何？」`,
+      acceptPrompt: '接下了收购委托。',
+      completePrompt: `${npcName}接过货物验了验，满意地点头：「痛快！下次有好货还来找老夫。」`,
+      productId: targetProductId,
+    })
+  }
+
+  // 2. 送信任务：送到某个其他据点
+  const otherNodes = session.world.nodes.filter(
+    (n) => n.id !== node.id && n.discovery !== 'hidden',
+  )
+  if (otherNodes.length > 0) {
+    const target = otherNodes[Math.floor(rng() * otherNodes.length)]
+    templates.push({
+      type: 'deliver',
+      title: `送信至${target.name}`,
+      intro: `${npcName}取出一封封好的信函，郑重道：「这封信关乎一笔重要生意，劳烦阁下亲自送到${target.name}。我那故交看到信自会明白。路上小心。」`,
+      acceptPrompt: '收下了信函，答应尽快送达。',
+      completePrompt: `${npcName}展信读罢，拱手道：「信已收到，有劳阁下跑这一趟！些许薄礼，权当谢仪。」`,
+      targetNodeId: target.id,
+    })
+  }
+
+  // 3. 天材地宝交易任务（测试可堆叠物品）
+  const treasureDefs = itemDefinitions.filter((d) => d.stackable)
+  if (treasureDefs.length > 0) {
+    const treasure = treasureDefs[Math.floor(rng() * treasureDefs.length)]
+    const action: 'buy' | 'sell' = rng() < 0.5 ? 'buy' : 'sell'
+    if (action === 'buy') {
+      templates.push({
+        type: 'trade',
+        title: `求购${treasure.name}`,
+        intro: `${npcName}神秘地掏出一只玉盒：「听闻阁下行走四方，身上可带有${treasure.name}？在下愿出高价收购，绝不让你吃亏。」`,
+        acceptPrompt: '从行囊中取出了所携的天材地宝。',
+        completePrompt: `${npcName}小心收好玉盒，笑道：「品质上佳，这是说好的灵石，请收好。」`,
+        productId: treasure.id,
+        tradeAction: 'buy',
+      })
+    } else {
+      templates.push({
+        type: 'trade',
+        title: `出售${treasure.name}`,
+        intro: `${npcName}神秘地取出一只玉盒：「阁下可识得此物？这是难得的${treasure.name}，若非手头紧，在下也舍不得出手。价钱好商量，您开个价？」`,
+        acceptPrompt: '接过了对方递来的玉盒。',
+        completePrompt: `${npcName}点了点灵石，拱手道：「公道！往后有好东西还来找阁下。」`,
+        productId: treasure.id,
+        tradeAction: 'sell',
+      })
+    }
+  }
+
+  return templates
+}
+
+export function generateNodeQuests(session: GameSession, nodeId: string) {
+  const node = getNode(session, nodeId)
+  if (!node) return
+  const existingAvailable = session.guild.quests.filter(
+    (q) => q.nodeId === nodeId && q.status === 'available',
+  )
+  if (existingAvailable.length > 0) return
+
+  const rng = createRngForSeed(session.world.seed + nodeId.split('-').reduce((a, b) => a + parseInt(b, 36), 0))
+  const templates = getNodeQuestTemplates(node, session)
+  const count = Math.min(2, templates.length)
+  const selected: typeof templates = []
+  const indices = new Set<number>()
+  for (let i = 0; i < count; i++) {
+    let idx = Math.floor(rng() * templates.length)
+    while (indices.has(idx)) idx = (idx + 1) % templates.length
+    indices.add(idx)
+    selected.push(templates[idx])
+  }
+
+  selected.forEach((template) => {
+    const npc = getRandomNpcName(rng)
+    const questId = `quest-${nodeId}-${session.guild.quests.length}`
+    session.guild.quests.push({
+      id: questId,
+      type: template.type,
+      nodeId,
+      npcName: npc,
+      title: template.title,
+      intro: template.intro,
+      acceptPrompt: template.acceptPrompt,
+      completePrompt: template.completePrompt,
+      reward: 0,
+      status: 'available',
+      productId: template.productId,
+      targetNodeId: template.targetNodeId,
+      tradeAction: template.tradeAction,
+    })
+  })
+}
+
+export function acceptQuest(session: GameSession, questId: string) {
+  const next = cloneSession(session)
+  const quest = next.guild.quests.find((q) => q.id === questId)
+  if (!quest || quest.status !== 'available') return next
+
+  quest.status = 'active'
+
+  // 送信任务：生成信件物品
+  if (quest.type === 'deliver' && quest.targetNodeId) {
+    const target = getNode(next, quest.targetNodeId)
+    const source = getNode(next, quest.nodeId)
+    addPlayerItem(next, '信函', false, {
+      questId: quest.id,
+      targetNodeId: quest.targetNodeId,
+      sourceNodeName: source?.name ?? '',
+      targetNodeName: target?.name ?? '',
+    })
+  }
+
+  // 收购任务：计算奖励（市场售价 * 1.3）
+  if (quest.type === 'purchase' && quest.productId) {
+    const product = productMap[quest.productId]
+    const baseSellPrice = Math.round(product.basePrice * next.config.economy.originDiscount)
+    quest.reward = Math.round(baseSellPrice * 1.3)
+  }
+
+  // 出售天材地宝任务：设定奖励（相当于卖出价）
+  if (quest.type === 'trade' && quest.tradeAction === 'sell' && quest.productId) {
+    quest.reward = 80 + Math.floor(Math.random() * 60)
+  }
+
+  // 收购天材地宝任务：设定奖励（相当于买入价作为成本）
+  if (quest.type === 'trade' && quest.tradeAction === 'buy' && quest.productId) {
+    quest.reward = 70 + Math.floor(Math.random() * 40)
+  }
+
+  addLog(next, `接取了委托「${quest.title}」。`)
+  return next
+}
+
+export function completeQuest(session: GameSession, questId: string) {
+  const next = cloneSession(session)
+  const quest = next.guild.quests.find((q) => q.id === questId)
+  if (!quest || quest.status !== 'active') return next
+
+  // 收购任务：检查玩家是否有对应货物
+  if (quest.type === 'purchase' && quest.productId) {
+    const cargoIdx = next.player.cargo.findIndex((c) => c.productId === quest.productId)
+    if (cargoIdx === -1) return next
+    next.player.cargo.splice(cargoIdx, 1)
+    next.player.spiritStone += quest.reward
+  }
+
+  // 送信任务：检查玩家是否有对应信件，报酬按路径距离递增
+  if (quest.type === 'deliver') {
+    const letterIdx = next.player.items.findIndex(
+      (item) => item.data?.questId === questId && item.name === '信函',
+    )
+    if (letterIdx === -1) return next
+    // 移除信件
+    next.player.items.splice(letterIdx, 1)
+    const pathLength = quest.nodeId && quest.targetNodeId
+      ? getShortestPathLength(next, quest.nodeId, quest.targetNodeId)
+      : 0
+    // 30 底薪 + 每段路径 15 灵石，越长越有价值
+    const baseReward = 30 + pathLength * 15
+    next.player.spiritStone += baseReward
+    quest.reward = baseReward
+  }
+
+  // 天材地宝交易
+  if (quest.type === 'trade' && quest.productId) {
+    if (quest.tradeAction === 'buy') {
+      // 玩家卖出天材地宝给NPC：检查玩家是否有该物品
+      const def = itemDefinitions.find((d) => d.id === quest.productId)
+      if (!def) return next
+      const namedItemIdx = next.player.items.findIndex(
+        (item) => item.name === def.name && item.count > 0,
+      )
+      if (namedItemIdx === -1) return next
+      const namedItem = next.player.items[namedItemIdx]
+      if (namedItem.count > 1) {
+        namedItem.count -= 1
+      } else {
+        next.player.items.splice(namedItemIdx, 1)
+      }
+      next.player.spiritStone += quest.reward
+    } else {
+      // 玩家从NPC买入天材地宝
+      if (next.player.spiritStone < quest.reward) return next
+      next.player.spiritStone -= quest.reward
+      const def = itemDefinitions.find((d) => d.id === quest.productId)
+      if (def) {
+        addPlayerItem(next, def.name, true)
+      }
+    }
+  }
+
+  quest.status = 'completed'
+  addLog(next, `完成了「${quest.title}」，获得 ${quest.reward} 灵石的报酬。`)
+  return next
+}
+
+export function getNodeQuests(session: GameSession, nodeId: string) {
+  return session.guild.quests.filter(
+    (q) => q.nodeId === nodeId && q.status !== 'completed',
+  )
+}
+
+/** 获取当前节点可完成的活跃任务（收购任务需玩家在当前节点有货、送信任务需目标节点等于当前节点、交易任务需在当前节点） */
+export function getCompletableQuests(session: GameSession, nodeId: string) {
+  const currentNode = getCurrentNode(session)
+  return session.guild.quests.filter((q) => {
+    if (q.status !== 'active') return false
+    // 收购任务：必须在当前节点（玩家所在处）且玩家有对应货物
+    if (q.type === 'purchase') {
+      if (q.nodeId !== currentNode.id) return false
+      return q.productId ? session.player.cargo.some((c) => c.productId === q.productId) : false
+    }
+    // 送信任务：目标节点必须在当前节点
+    if (q.type === 'deliver') {
+      return q.targetNodeId === currentNode.id
+    }
+    // 交易任务：必须在当前节点
+    if (q.type === 'trade') {
+      if (q.nodeId !== currentNode.id) return false
+      if (q.tradeAction === 'buy') {
+        // 玩家需要有所需物品
+        const def = itemDefinitions.find((d) => d.id === q.productId)
+        return def ? hasItem(session, def.name) : false
+      }
+      // sell：玩家需要有钱（检查由引擎函数处理）
+      return true
+    }
+    return false
+  })
+}
+
+/**
+ * 在地图上查找两节点间最短路径长度（边数），忽略 discovery 状态
+ * 返回 -1 表示不可达（连通图通常不会出现）
+ */
+function getShortestPathLength(session: GameSession, fromId: string, toId: string) {
+  if (fromId === toId) return 0
+  const visited = new Set([fromId])
+  const queue: Array<{ nodeId: string; depth: number }> = [{ nodeId: fromId, depth: 0 }]
+  while (queue.length) {
+    const current = queue.shift()!
+    for (const edge of getAdjacentEdges(session, current.nodeId)) {
+      const nextId = edge.fromNodeId === current.nodeId ? edge.toNodeId : edge.fromNodeId
+      if (visited.has(nextId)) continue
+      if (nextId === toId) return current.depth + 1
+      visited.add(nextId)
+      queue.push({ nodeId: nextId, depth: current.depth + 1 })
+    }
+  }
+  return -1
 }

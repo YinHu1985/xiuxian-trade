@@ -116,3 +116,26 @@ export function getProductsForNodeType(
     return realmTierMap[product.realm] <= maxRealmTier
   })
 }
+
+export const questNpcNames = [
+  '孙掌柜', '李娘子', '赵铁笔', '钱账房', '周行脚',
+  '吴采药', '郑猎户', '王执事', '冯库头', '陈管库',
+  '褚郎中', '卫老兵', '沈散修', '韩驼子', '杨快嘴',
+]
+
+export const itemDefinitions: { id: string; name: string; stackable: boolean }[] = [
+  { id: 'treasure-lingzhi', name: '灵芝草', stackable: true },
+  { id: 'treasure-huolongguo', name: '火龙果', stackable: true },
+  { id: 'treasure-shuangsuihua', name: '霜髓花', stackable: true },
+  { id: 'treasure-zidiangu', name: '紫电菇', stackable: true },
+  { id: 'treasure-xuanhuangshen', name: '玄黄参', stackable: true },
+  { id: 'treasure-yujinglian', name: '玉晶莲', stackable: true },
+  { id: 'treasure-xingchenye', name: '星辰叶', stackable: true },
+  { id: 'treasure-huntai', name: '混元胎', stackable: false },
+]
+
+export const itemNameMap = Object.fromEntries(itemDefinitions.map((item) => [item.id, item.name]))
+
+export function getRandomNpcName(rng: () => number) {
+  return questNpcNames[Math.floor(rng() * questNpcNames.length)]
+}

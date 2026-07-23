@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { craftedCategories, productMap, rawMaterialCategories } from '@/game/data'
 import { createNewGame } from '@/game/generator'
 import {
-  buildBranchBuilding,
   executePendingPlan,
   establishBranch,
   getBranchIncome,
   getBranchProductPool,
   getTradableProducts,
+  scheduleConstruction,
   scheduleTravel,
   tavernRumor,
 } from '@/game/engine'
@@ -106,8 +106,10 @@ describe('经营规则', () => {
     session = establishBranch(session)
     const beforePool = getBranchProductPool(session, startNode.id).length
     const beforeIncome = getBranchIncome(session, startNode.id)
-    session = buildBranchBuilding(session, startNode.id, 'hub')
-    session = buildBranchBuilding(session, startNode.id, 'auction')
+    session = scheduleConstruction(session, startNode.id, 'hub')
+    session = executePendingPlan(session)
+    session = scheduleConstruction(session, startNode.id, 'auction')
+    session = executePendingPlan(session)
     expect(getBranchProductPool(session, startNode.id).length).toBeGreaterThanOrEqual(beforePool)
     expect(getBranchIncome(session, startNode.id)).toBeGreaterThanOrEqual(beforeIncome)
   })
@@ -128,8 +130,10 @@ describe('经营规则', () => {
     neighborNode.discovery = 'confirmed'
     adjacentEdge.discovery = 'confirmed'
 
-    session = buildBranchBuilding(session, startNodeId, 'hub')
-    session = buildBranchBuilding(session, startNodeId, 'alchemy')
+    session = scheduleConstruction(session, startNodeId, 'hub')
+    session = executePendingPlan(session)
+    session = scheduleConstruction(session, startNodeId, 'alchemy')
+    session = executePendingPlan(session)
     const localNode = session.world.nodes.find((node) => node.id === startNodeId)!
     const tradable = getTradableProducts(session, localNode)
     expect(tradable).toEqual(expect.arrayContaining(['herb-qi', 'ore-qi', 'elixir-qi']))
