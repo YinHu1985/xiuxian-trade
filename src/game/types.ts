@@ -225,6 +225,7 @@ export interface GameSession {
   world: WorldState
   player: PlayerState
   guild: GuildState
+  storyFlags: Record<string, boolean>
 }
 
 export interface SaveMeta {

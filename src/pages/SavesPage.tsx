@@ -90,7 +90,7 @@ export default function SavesPage({ onNavigate }: { onNavigate: (page: 'game' | 
               >
                 导入
               </button>
-              <button className="action" onClick={() => onNavigate('newGame')}>新开一局</button>
+              <button className="action" onClick={() => onNavigate('newGame')}>返回</button>
             </div>
             {message ? <p className="mt-4 text-sm text-amber-100">{message}</p> : null}
           </section>

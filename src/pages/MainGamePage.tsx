@@ -21,10 +21,16 @@ import {
   getItemCount,
 } from '@/game/engine'
 import { itemDefinitions, itemNameMap } from '@/game/data'
+import { STORY_EVENTS, markEventTriggered, isEventTriggered } from '@/game/storyEvents'
 import { useGameStore } from '@/store/gameStore'
+import SettingsPanel from '@/components/SettingsPanel'
 import type { BuildingType, GameSession, QuestState } from '@/game/types'
 
+const base = import.meta.env.BASE_URL
+const characterPortraitUrl = `${base}images/portraits/char-01.webp`
+
 type MainView = 'town' | 'airship' | 'map'
+type DialogMode = 'plain' | 'inline-image' | 'portrait-left' | 'portrait-right'
 type OverlayWindowState =
   | {
       kind: 'rumor' | 'market' | 'branch' | 'manor'
@@ -92,15 +98,17 @@ export default function MainGamePage({ onNavigate }: { onNavigate: (page: 'game'
   const [revealAll, setRevealAll] = useState(false)
   const [showMoveRange, setShowMoveRange] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsTab, setSettingsTab] = useState<'options' | 'saves'>('options')
   const [isExecutingPlan, setIsExecutingPlan] = useState(false)
-  const [dialogConfig, setDialogConfig] = useState<{
+const [dialogConfig, setDialogConfig] = useState<{
+    mode?: DialogMode
     title: string
     content: string
     imageUrl?: string
+    portraitUrl?: string
+    characterName?: string
     buttons: { label: string; onClick: () => void }[]
   } | null>(null)
-  const introShownRef = useRef(false)
-
   const selectNode = useGameStore((state) => state.selectNode)
   const tavernRumor = useGameStore((state) => state.tavernRumor)
   const buyProduct = useGameStore((state) => state.buyProduct)
@@ -125,23 +133,109 @@ export default function MainGamePage({ onNavigate }: { onNavigate: (page: 'game'
     refreshSaves()
   }, [refreshSaves])
 
+  // ── 初始引导：3 步连续对话框 ──
   useEffect(() => {
-    if (session && !introShownRef.current) {
-      introShownRef.current = true
-      const addFunds = () => {
-        session.player.spiritStone += 200
+    if (!session) return
+    if (isEventTriggered(session, STORY_EVENTS.INTRO_DIALOG)) return
+    markEventTriggered(session, STORY_EVENTS.INTRO_DIALOG)
+    showIntroStep(0)
+
+    function showIntroStep(step: number) {
+      const steps: { title: string; content: string }[] = [
+        {
+          title: '开拓许可',
+          content:
+            '你手中的灵材与灵石，是起点，也是唯一可用的本钱。\n\n天灾后的碎片疆域上，商会如野草般生灭。你领到的开拓许可期限有限，在那之前，是建起横跨诸地的商路、让商会名号传遍七十二城，还是灰溜溜地在期限到来前清账离场——全看你自己。\n\n飞舟已泊在码头，地图上尚有大片迷雾。第一步怎么走，你来定。',
+        },
+        {
+          title: '城镇一览',
+          content:
+            '你所在的据点是一座城镇——这里是你的行动枢纽。\n\n• 酒馆（知客亭/营地）：可以打听新据点和道路传闻，也能接取或交付委托。\n• 交易所：买卖本地特产，低买高卖赚取差价。\n• 城主府（分号所在地）：已设立分号的城镇可在此开设商会，管理商路与产业。\n\n先去酒馆或交易所看看，熟悉一下环境吧。',
+        },
+        {
+          title: '启程资金',
+          content:
+            '商会账上虽有些底子，但跑商周转总归需要更多灵石。会长助理特批了一笔额外资金，已划入商会账册。\n\n省着点花——飞舟维护、供奉酬劳、货物押金，处处都要灵石。',
+        },
+      ]
+      if (step >= steps.length) {
+        setDialogConfig(null)
+        return
       }
       setDialogConfig({
-        title: '开拓许可',
-        content:
-          '你手中的灵材与灵石，是起点，也是唯一可用的本钱。\n\n天灾后的碎片疆域上，商会如野草般生灭。你领到的开拓许可期限有限，在那之前，是建起横跨诸地的商路、让商会名号传遍七十二城，还是灰溜溜地在期限到来前清账离场——全看你自己。\n\n飞舟已泊在码头，地图上尚有大片迷雾。第一步怎么走，你来定。',
-        buttons: [
-          { label: '心领了，开始吧', onClick: () => setDialogConfig(null) },
-          { label: '收下额外支助（+200灵石）', onClick: () => { addFunds(); setDialogConfig(null) } },
-        ],
+        mode: 'portrait-right',
+        portraitUrl: characterPortraitUrl,
+        characterName: '会长助理',
+        title: steps[step].title,
+        content: steps[step].content,
+        buttons:
+          step === 2
+            ? [
+                {
+                  label: '收下灵石（+200）',
+                  onClick: () => {
+                    session.player.spiritStone += 200
+                    setDialogConfig(null)
+                  },
+                },
+              ]
+            : [{ label: '继续', onClick: () => showIntroStep(step + 1) }],
       })
     }
   }, [session])
+
+  // ── 飞舟首次进入引导 ──
+  useEffect(() => {
+    if (!session || mainView !== 'airship') return
+    if (isEventTriggered(session, STORY_EVENTS.AIRSHIP_INTRO)) return
+    markEventTriggered(session, STORY_EVENTS.AIRSHIP_INTRO)
+    setDialogConfig({
+        mode: 'portrait-right',
+        portraitUrl: characterPortraitUrl,
+        characterName: '会长助理',
+        title: '飞舟总览',
+      content:
+        '飞舟是你的移动总部，可在此查看商会资产。\n\n• 行囊：查看随身携带的货物与道具。\n• 改造：消耗灵石升级飞舟的货仓容量、移动范围和供奉席位。\n\n定期升级飞舟，才能把商路铺得更远。',
+      buttons: [{ label: '知道了', onClick: () => setDialogConfig(null) }],
+    })
+  }, [mainView, session])
+
+  // ── 地图首次进入引导（2 步） ──
+  useEffect(() => {
+    if (!session || mainView !== 'map') return
+    if (isEventTriggered(session, STORY_EVENTS.MAP_INTRO)) return
+    markEventTriggered(session, STORY_EVENTS.MAP_INTRO)
+    showMapIntroStep(0)
+
+    function showMapIntroStep(step: number) {
+      const steps: { title: string; content: string }[] = [
+        {
+          title: '大地图指南',
+          content:
+            '在这片碎片疆域上，移动与探索是扩张商路的基础。\n\n• 移动：选中已确认道路的据点，消耗移动力前往。高移动力仅在已确认道路上生效。\n• 探索：选中仅知传闻的据点或道路，执行"探索"指令可将其确认为可用路线——每次探索固定消耗一回合。\n• 打听传闻：据点内的酒馆（知客亭/营地）可以打听新据点和新道路的消息。\n• 过回合：结束当前回合，推进商会运作、结算收入与供奉任务。\n\n先确认周边的道路和据点，摸清这片区域的底细。',
+        },
+        {
+          title: '商路与收入',
+          content:
+            '商路是商会收入的核心来源。\n\n• 在据点间建立商路，需要占用一名供奉常驻维护。\n• 商路会将对端据点全部本地产物带入收入计算，但不进入交易所流通。\n• 城镇据点可通过提升繁荣度来加成该商路收入。\n• 注意：商路不增加交易品种类，仅增加灵石收入。\n\n供奉有限，商路需要精挑细选——连接高产出据点才是最划算的买卖。',
+        },
+      ]
+      if (step >= steps.length) {
+        setDialogConfig(null)
+        return
+      }
+      setDialogConfig({
+        mode: 'portrait-right',
+        portraitUrl: characterPortraitUrl,
+        characterName: '会长助理',
+        title: steps[step].title,
+        content: steps[step].content,
+        buttons: [
+          { label: step < steps.length - 1 ? '继续' : '出发', onClick: () => showMapIntroStep(step + 1) },
+        ],
+      })
+    }
+  }, [mainView, session])
 
   const stageStyle = useMemo(
     () => ({
@@ -245,7 +339,7 @@ export default function MainGamePage({ onNavigate }: { onNavigate: (page: 'game'
               onChangeView={setMainView}
               onExecuteTurn={handleExecutePendingPlan}
               onClearPlan={pendingPlan ? clearPendingPlan : undefined}
-              onOpenSettings={() => setSettingsOpen(true)}
+              onOpenSettings={() => { setSettingsOpen(true); setSettingsTab('options') }}
             />
           </div>
 
@@ -332,26 +426,47 @@ export default function MainGamePage({ onNavigate }: { onNavigate: (page: 'game'
           ) : null}
 
           {settingsOpen ? (
-            <OverlayFrame title="设定与存档" onClose={() => setSettingsOpen(false)}>
-              <SettingsWindow
-                saves={saves}
-                saveTitle={saveTitle}
-                onSaveTitleChange={setSaveTitle}
-                onSave={() => {
-                  saveCurrent(saveTitle.trim() || '手动存档')
-                  setSaveTitle('')
-                }}
-                onOpenSaves={() => onNavigate('saves')}
-                onNewGame={() => onNavigate('newGame')}
-              />
+            <OverlayFrame title={settingsTab === 'options' ? '选项' : '存档管理'} onClose={() => setSettingsOpen(false)}>
+              {settingsTab === 'options' ? (
+                <SettingsWindowTabOptions />
+              ) : (
+                <SettingsWindowTabSaves
+                  saves={saves}
+                  saveTitle={saveTitle}
+                  onSaveTitleChange={setSaveTitle}
+                  onSave={() => {
+                    saveCurrent(saveTitle.trim() || '手动存档')
+                    setSaveTitle('')
+                  }}
+                  onOpenSaves={() => onNavigate('saves')}
+                  onNewGame={() => onNavigate('newGame')}
+                />
+              )}
+              <div className="mt-4 flex justify-center gap-3">
+                <button
+                  className={`rounded-[12px] border px-4 py-2 text-sm transition ${settingsTab === 'options' ? 'border-[#c19154]/65 bg-[linear-gradient(180deg,rgba(110,74,43,0.96),rgba(68,45,28,0.94))] text-[#fff4dd]' : 'border-[#7c5c39]/50 bg-[linear-gradient(180deg,rgba(72,48,30,0.94),rgba(45,30,21,0.92))] text-[#ead8ba] hover:border-[#c19154]/65 hover:text-[#fff4dd]'}`}
+                  onClick={() => setSettingsTab('options')}
+                >
+                  选项
+                </button>
+                <button
+                  className={`rounded-[12px] border px-4 py-2 text-sm transition ${settingsTab === 'saves' ? 'border-[#c19154]/65 bg-[linear-gradient(180deg,rgba(110,74,43,0.96),rgba(68,45,28,0.94))] text-[#fff4dd]' : 'border-[#7c5c39]/50 bg-[linear-gradient(180deg,rgba(72,48,30,0.94),rgba(45,30,21,0.92))] text-[#ead8ba] hover:border-[#c19154]/65 hover:text-[#fff4dd]'}`}
+                  onClick={() => setSettingsTab('saves')}
+                >
+                  存档管理
+                </button>
+              </div>
             </OverlayFrame>
           ) : null}
 
           {dialogConfig ? (
             <DialogWindow
+              mode={dialogConfig.mode}
               title={dialogConfig.title}
               content={dialogConfig.content}
               imageUrl={dialogConfig.imageUrl}
+              portraitUrl={dialogConfig.portraitUrl}
+              characterName={dialogConfig.characterName}
               buttons={dialogConfig.buttons}
             />
           ) : null}
@@ -881,32 +996,85 @@ function TurnAdvanceOverlay({ planLabel }: { planLabel: string }) {
 function DialogWindow({
   title,
   content,
+  mode,
   imageUrl,
+  portraitUrl,
+  characterName,
   buttons,
 }: {
+  mode?: DialogMode
   title: string
   content: string
   imageUrl?: string
+  portraitUrl?: string
+  characterName?: string
   buttons: { label: string; onClick: () => void }[]
 }) {
+  const withPortrait = mode === 'portrait-left' || mode === 'portrait-right'
+  const isLeft = mode === 'portrait-left'
+
   return (
-    <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#1d140d]/76 backdrop-blur-sm">
-      <div className="relative w-[480px] max-w-[86%] overflow-hidden rounded-[20px] border border-[#7a5b36]/60 bg-[linear-gradient(180deg,rgba(48,32,21,0.99),rgba(30,21,14,0.98))] p-6 shadow-[0_30px_100px_rgba(28,16,8,0.9)]">
-        <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(255,229,177,0.42),transparent)]" />
-        <p className="text-xs uppercase tracking-[0.32em] text-amber-100/40">消息</p>
-        <h2 className="mt-2 font-serif text-2xl text-[#fff4dd]">{title}</h2>
-        {imageUrl ? (
-          <img src={imageUrl} alt="" className="mt-4 w-full rounded-[14px] border border-[#7a5a36]/50 object-cover" />
-        ) : null}
-        <p className="mt-4 whitespace-pre-line text-sm leading-7 text-[#ead8ba]">{content}</p>
-        <div className="mt-6 flex flex-wrap gap-3">
-          {buttons.map((button, index) => (
-            <button key={index} className="action" onClick={button.onClick}>
-              {button.label}
-            </button>
-          ))}
+    <div className="absolute inset-0 z-20 flex justify-center bg-[#1d140d]/76 backdrop-blur-sm">
+      {/* Non-portrait: center vertically */}
+      {!withPortrait ? (
+        <div className="flex items-center">
+          <div className="relative w-[480px] max-w-[86%] overflow-hidden rounded-[20px] border border-[#7a5b36]/60 bg-[linear-gradient(180deg,rgba(48,32,21,0.99),rgba(30,21,14,0.98))] p-6 shadow-[0_30px_100px_rgba(28,16,8,0.9)]">
+            <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(255,229,177,0.42),transparent)]" />
+            <p className="text-xs uppercase tracking-[0.32em] text-amber-100/40">消息</p>
+            <h2 className="mt-2 font-serif text-2xl text-[#fff4dd]">{title}</h2>
+            {mode === 'inline-image' && imageUrl ? (
+              <img src={imageUrl} alt="" className="mt-4 w-full rounded-[14px] border border-[#7a5a36]/50 object-cover" />
+            ) : null}
+            <p className="mt-4 whitespace-pre-line text-sm leading-7 text-[#ead8ba]">{content}</p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              {buttons.map((button, index) => (
+                <button key={index} className="action" onClick={button.onClick}>
+                  {button.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
+      ) : (
+        /* Portrait: top-anchored so dialog expands downward without shifting the portrait */
+        <div className="relative mt-[40vh]">
+          {/* Half-body portrait — bottom edge touches top of dialog box */}
+          {portraitUrl ? (
+            <div className={`absolute bottom-full z-30 ${isLeft ? 'left-10' : 'right-16'}`}>
+              <div className="relative flex flex-col items-center">
+                <div className="relative">
+                  <img src={portraitUrl} alt={characterName ?? ''} className="h-[260px] w-auto select-none" draggable={false} />
+                  {characterName ? (
+                    <div className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-[10px] border border-[#7a5a36]/50 bg-[linear-gradient(180deg,rgba(67,45,28,0.97),rgba(41,28,19,0.95))] px-3 py-1 text-xs text-[#cdb48a] whitespace-nowrap">
+                      {characterName}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="flex w-[880px] max-w-[86%] flex-col overflow-hidden rounded-[20px] border border-[#7a5b36]/60 bg-[linear-gradient(180deg,rgba(48,32,21,0.99),rgba(30,21,14,0.98))] shadow-[0_30px_100px_rgba(28,16,8,0.9)]">
+            <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(255,229,177,0.42),transparent)]" />
+            {/* Scrollable content area */}
+            <div className="max-h-[55vh] overflow-y-auto p-6">
+               <p className="text-xs uppercase tracking-[0.32em] text-amber-100/40">消息</p>
+               <h2 className="mt-2 font-serif text-2xl text-[#fff4dd]">{title}</h2>
+               <p className="mt-4 whitespace-pre-line text-sm leading-7 text-[#ead8ba]">{content}</p>
+            </div>
+            {/* Fixed button area — always visible */}
+            <div className="flex-shrink-0 border-t border-[#7a5a36]/30 px-6 py-4">
+              <div className="flex flex-wrap gap-3">
+                {buttons.map((button, index) => (
+                  <button key={index} className="action" onClick={button.onClick}>
+                    {button.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1083,7 +1251,7 @@ function MarketWindow({
                       {realmLabelMap[product.realm]} · {categoryLabelMap[product.category]} · 库存 {entry?.quantity ?? 1}/{entry?.max ?? 1}
                     </p>
                   </div>
-                  <button className="action !px-3 !py-2" onClick={() => onBuyProduct(productId)} disabled={!isLocal}>
+                  <button className="action !px-3 !py-2" data-sfx="trade" onClick={() => onBuyProduct(productId)} disabled={!isLocal}>
                     {isLocal ? `购入 ${getProductPrice(session, targetNode, productId, 'buy')}` : `查阅 ${getProductPrice(session, targetNode, productId, 'buy')}`}
                   </button>
                 </div>
@@ -1103,6 +1271,7 @@ function MarketWindow({
               return (
                 <button
                   key={cargo.id}
+                  data-sfx="trade"
                   className="flex items-start justify-between rounded-[14px] border border-[#7c5c39]/45 bg-[linear-gradient(180deg,rgba(91,60,35,0.94),rgba(58,38,24,0.92))] px-4 py-3 text-left text-sm text-[#fff4dd] transition hover:border-[#c19154]/65 hover:bg-[linear-gradient(180deg,rgba(110,74,43,0.96),rgba(68,45,28,0.94))]"
                   onClick={() => onSellCargo(cargo.id)}
                 >
@@ -1432,7 +1601,15 @@ function AirshipSidebar({
   )
 }
 
-function SettingsWindow({
+function SettingsWindowTabOptions() {
+  return (
+    <div className="mx-auto max-w-md">
+      <SettingsPanel />
+    </div>
+  )
+}
+
+function SettingsWindowTabSaves({
   saves,
   saveTitle,
   onSaveTitleChange,

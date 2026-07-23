@@ -72,6 +72,7 @@ export default function TopBar({
               type="button"
               onClick={onExecuteTurn}
               disabled={isExecutingPlan}
+              data-sfx="confirm"
               className="flex h-full min-h-[88px] w-[112px] flex-col items-center justify-center rounded-[14px] border border-[#be8b50]/75 bg-[linear-gradient(180deg,rgba(122,83,44,0.98),rgba(81,54,29,0.96))] px-3 py-3 text-[#fff4dd] shadow-[0_10px_24px_rgba(24,14,8,0.24)] transition hover:border-[#d8b073] hover:bg-[linear-gradient(180deg,rgba(143,96,50,0.99),rgba(92,62,33,0.97))] disabled:cursor-not-allowed disabled:opacity-60"
             >
               <FastForward size={16} />

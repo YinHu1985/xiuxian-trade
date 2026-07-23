@@ -489,6 +489,7 @@ export function createNewGame(config: GameConfig = defaultConfig, seed = Date.no
       finalObjectiveCompleted: false,
       lastMoveRangeUpgradeUnlocked: false,
     },
+    storyFlags: {},
   }
 
   return session
