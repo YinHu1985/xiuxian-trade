@@ -455,6 +455,10 @@ export function createNewGame(config: GameConfig = defaultConfig, seed = Date.no
     items: [] as PlayerItem[],
     tradeLinkCapacity: config.progress.startingTradeLinkCapacity,
     retainerCapacity: config.progress.startingRetainerCapacity,
+    airshipDurability: 100,
+    airshipMaxDurability: 100,
+    airshipCrew: 80,
+    airshipMaxCrew: 80,
   }
 
   const guild: GuildState = {
@@ -469,6 +473,7 @@ export function createNewGame(config: GameConfig = defaultConfig, seed = Date.no
       status: 'idle',
       remainingTurns: 0,
     })),
+    reputation: 0,
   }
 
   const session: GameSession = {

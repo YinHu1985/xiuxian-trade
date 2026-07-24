@@ -1,4 +1,4 @@
-import { Compass, FastForward, Gem, Network, ScrollText, Settings2, UserRound, X } from 'lucide-react'
+import { Award, Compass, FastForward, Gem, Network, ScrollText, Settings2, UserRound, X } from 'lucide-react'
 import type { GameSession } from '@/game/types'
 
 interface TopBarProps {
@@ -45,6 +45,7 @@ export default function TopBar({
           <Stat icon={<Compass size={14} />} label="移动" value={session.player.moveRange} />
           <Stat icon={<UserRound size={14} />} label="供奉" value={`${session.guild.retainers.length}/${session.player.retainerCapacity}`} />
           <Stat icon={<Network size={14} />} label="商路" value={session.guild.tradeLinks.length} />
+          <Stat icon={<Award size={14} />} label="声誉" value={session.guild.reputation} />
           {onOpenSettings ? (
             <button
               type="button"

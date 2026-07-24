@@ -126,6 +126,10 @@ export interface PlayerState {
   items: PlayerItem[]
   tradeLinkCapacity: number
   retainerCapacity: number
+  airshipDurability: number
+  airshipMaxDurability: number
+  airshipCrew: number
+  airshipMaxCrew: number
 }
 
 export interface GuildState {
@@ -135,6 +139,7 @@ export interface GuildState {
   tradeLinks: TradeLinkState[]
   retainers: RetainerState[]
   quests: QuestState[]
+  reputation: number
 }
 
 export interface WorldState {

@@ -22,6 +22,12 @@ import {
 } from '@/game/engine'
 import { itemDefinitions, itemNameMap } from '@/game/data'
 import { STORY_EVENTS, markEventTriggered, isEventTriggered } from '@/game/storyEvents'
+import {
+  createBattleState, deployCrew, getDeployedCrew,
+  simulateFullBattle, generateRandomEncounter,
+  isShipDestroyed,
+  type BattleState as BattleData, type BattleSide, type BattleLogEntry,
+} from '@/game/battle'
 import { useGameStore } from '@/store/gameStore'
 import SettingsPanel from '@/components/SettingsPanel'
 import type { BuildingType, GameSession, QuestState } from '@/game/types'
@@ -100,6 +106,8 @@ export default function MainGamePage({ onNavigate }: { onNavigate: (page: 'game'
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<'options' | 'saves'>('options')
   const [isExecutingPlan, setIsExecutingPlan] = useState(false)
+  const [battleData, setBattleData] = useState<BattleData | null>(null)
+  const [isDrillBattle, setIsDrillBattle] = useState(true) // true=演习, false=遭遇战
 const [dialogConfig, setDialogConfig] = useState<{
     mode?: DialogMode
     title: string
@@ -317,10 +325,18 @@ const [dialogConfig, setDialogConfig] = useState<{
   async function handleExecutePendingPlan() {
     if (isExecutingPlan) return
     setIsExecutingPlan(true)
+    const hadTravel = pendingPlan?.type === 'travel'
     await new Promise((resolve) => window.setTimeout(resolve, 320))
     executePendingPlan()
     await new Promise((resolve) => window.setTimeout(resolve, 620))
     setIsExecutingPlan(false)
+
+    // 过回合后结算完成，如有移动则随机触发遭遇战
+    if (hadTravel && Math.random() < 0.5) {
+      const encounter = generateRandomEncounter(session.player.airshipDurability)
+      setBattleData(encounter)
+      setIsDrillBattle(false)
+    }
   }
 
   return (
@@ -360,6 +376,7 @@ const [dialogConfig, setDialogConfig] = useState<{
                   onIncreaseRetainerCapacity={increaseRetainerCapacity}
                   onIncreaseCargoCapacity={increaseCargoCapacity}
                   onIncreaseMoveRange={increaseMoveRange}
+                  onStartDrill={() => setBattleData(createBattleState(session.player.airshipDurability))}
                 />
               ) : null}
               {mainView === 'map' ? (
@@ -471,6 +488,22 @@ const [dialogConfig, setDialogConfig] = useState<{
             />
           ) : null}
 
+          {battleData ? (
+            <BattleModal
+              battle={battleData}
+              maxCrew={session.player.airshipCrew}
+              isDrill={isDrillBattle}
+              onClose={(settlement) => {
+                if (settlement) {
+                  session.player.airshipDurability = Math.max(0, session.player.airshipDurability - settlement.shipDamage)
+                  session.player.airshipCrew = Math.max(0, session.player.airshipCrew - settlement.crewLoss)
+                }
+                setBattleData(null)
+                setIsDrillBattle(true)
+              }}
+            />
+          ) : null}
+
           {isExecutingPlan ? <TurnAdvanceOverlay planLabel={pendingPlanDescription.actionLabel} /> : null}
         </div>
       </div>
@@ -516,6 +549,513 @@ function StatChip({ label, value }: { label: string; value: string | number }) {
     <div className="rounded-[14px] border border-[#7c5c39]/45 bg-[linear-gradient(180deg,rgba(92,61,36,0.9),rgba(58,38,24,0.88))] px-4 py-3">
       <div className="text-xs uppercase tracking-[0.22em] text-amber-100/40">{label}</div>
       <div className="mt-2 text-base text-[#fff4dd]">{value}</div>
+    </div>
+  )
+}
+
+// ─── 战斗系统 ────────────────────────────────────────────
+
+const ROW_LABELS = ['後', '中', '前']
+const COL_LABELS = ['上', '中', '下']
+
+function getCellLabel(index: number): string {
+  return `${ROW_LABELS[Math.floor(index / 3)]}${COL_LABELS[index % 3]}`
+}
+
+function cellColor(hp: number, maxHp: number, type: string): string {
+  if (type === 'empty') return ''
+  const ratio = hp / maxHp
+  if (ratio > 0.6) return 'text-emerald-300'
+  if (ratio > 0.3) return 'text-amber-300'
+  return 'text-red-400'
+}
+
+function hpBarColor(hp: number, maxHp: number): string {
+  const ratio = hp / maxHp
+  if (ratio > 0.6) return 'bg-emerald-500'
+  if (ratio > 0.3) return 'bg-amber-500'
+  return 'bg-red-500'
+}
+
+function BattleGrid({
+  side,
+  label,
+  isPlayer,
+  onCellClick,
+  onCellReduce,
+  highlightAtk,
+  highlightDef,
+  facing,
+  visualHp,
+}: {
+  side: BattleSide
+  label: string
+  isPlayer: boolean
+  onCellClick?: (pos: number) => void
+  onCellReduce?: (pos: number) => void
+  highlightAtk?: number | null
+  highlightDef?: number | null
+  /** 'attacker': transpose; 'defender': transpose + reverse rows */
+  facing?: 'attacker' | 'defender'
+  /** 动画回放期独立 HP 显示层，不传则直接用 model 值 */
+  visualHp?: number[]
+}) {
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <p className="mb-2 text-xs uppercase tracking-[0.25em] text-amber-100/50">{label}</p>
+      {[0, 1, 2].map((visualRow) => (
+        <div key={visualRow} className="flex gap-1">
+          {[0, 1, 2].map((visualCol) => {
+            const pos = !facing
+              ? visualRow * 3 + visualCol // standard
+              : facing === 'defender'
+                ? 6 - 3 * visualCol + visualRow // transpose + reverse rows
+                : 3 * visualCol + visualRow // transpose only
+            const cell = side.cells[pos]
+            const hp = visualHp ? visualHp[pos] : cell.currentHp
+            const isAtk = highlightAtk === pos
+            const isDef = highlightDef === pos
+            return (
+              <button
+                key={pos}
+                type="button"
+                disabled={!isPlayer || cell.type === 'ship'}
+                onClick={() => onCellClick?.(pos)}
+                className={[
+                  'relative flex h-[68px] w-[68px] flex-col items-center justify-center rounded-[12px] border text-xs transition',
+                  cell.type === 'empty'
+                    ? 'border-[#5a4030]/40 bg-[#2a1e14]/50 text-[#6f5539]'
+                    : cell.type === 'ship'
+                      ? 'border-[#c19154]/60 bg-[linear-gradient(180deg,rgba(99,65,38,0.95),rgba(61,40,25,0.9))] text-[#fff4dd]'
+                      : 'border-[#7a5a36]/55 bg-[linear-gradient(180deg,rgba(67,45,28,0.92),rgba(41,28,19,0.9))] text-[#ead8ba] hover:border-[#c19154]/50',
+                  isDef ? 'cell-defender' : '',
+                  isAtk ? 'cell-attacker' : '',
+                ].join(' ')}
+              >
+                {cell.type === 'empty' ? (
+                  <span className="text-[10px] opacity-40">{getCellLabel(pos)}</span>
+                ) : (
+                  <>
+                    <span className="text-[10px] leading-tight opacity-60">
+                      {cell.type === 'ship' ? '飞舟' : getCellLabel(pos)}
+                    </span>
+                    <span className={`text-sm font-bold ${cellColor(hp, cell.maxHp, cell.type)}`}>
+                      {hp}
+                    </span>
+                    {/* Deploy phase: +/- buttons replace HP bar on crew cells */}
+                    {cell.type === 'crew' && onCellReduce ? (
+                      <div className="mt-0.5 flex items-center gap-3">
+                        <span
+                          className="cursor-pointer text-xs leading-none text-red-400/70 hover:text-red-300 select-none"
+                          onClick={(e) => { e.stopPropagation(); onCellReduce(pos) }}
+                        >−</span>
+                        <span
+                          className="cursor-pointer text-xs leading-none text-emerald-400/70 hover:text-emerald-300 select-none"
+                          onClick={(e) => { e.stopPropagation(); onCellClick?.(pos) }}
+                        >+</span>
+                      </div>
+                    ) : cell.type === 'crew' ? (
+                      /* HP bar (fighting/result phase) */
+                      <div className="mt-0.5 h-1 w-12 overflow-hidden rounded-full bg-[#1a110a]/60">
+                        <div
+                          className={`h-full rounded-full ${hpBarColor(hp, cell.maxHp)}`}
+                          style={{ width: `${(hp / cell.maxHp) * 100}%` }}
+                        />
+                      </div>
+                    ) : null}
+                  </>
+                )}
+                {/* Projectile indicator for attacker */}
+                {isAtk ? <span className="projectile-marker">✦</span> : null}
+              </button>
+            )
+          })}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function BattleModal({
+  battle: initialBattle,
+  maxCrew,
+  isDrill = true,
+  onClose,
+}: {
+  battle: BattleData
+  maxCrew: number
+  isDrill?: boolean
+  onClose: (settlement?: { shipDamage: number; crewLoss: number }) => void
+}) {
+  const [data, setData] = useState(initialBattle)
+  const [attackHighlight, setAttackHighlight] = useState<{
+    fromPos: number
+    toPos: number
+    side: 'player' | 'enemy'
+  } | null>(null)
+  // 动画回放状态
+  const [animIndex, setAnimIndex] = useState(-1)           // -1 = 未回放
+  const [visualPlayerHp, setVisualPlayerHp] = useState<number[]>([])
+  const [visualEnemyHp, setVisualEnemyHp] = useState<number[]>([])
+  const animLogsRef = useRef<BattleLogEntry[]>([])
+  const animFinalRef = useRef<{
+    playerSide: BattleSide
+    enemySide: BattleSide
+    result: 'none' | 'player_victory' | 'enemy_victory'
+  } | null>(null)
+  const pauseTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  const dataRef = useRef(data)
+  dataRef.current = data
+
+  // ── 战斗回放系统 ──
+  // 预计算全部轮次，动画只做回放，HP 显示与 model 解耦
+
+  /** 步进播放下一个动画事件 */
+  useEffect(() => {
+    if (animIndex < 0) return         // 未开始
+    if (animIndex >= animLogsRef.current.length) return  // 已播完
+
+    let cancelled = false
+    const log = animLogsRef.current[animIndex]
+
+    // 同时触发：高亮 + HP 变化，让玩家感觉是这一击打掉了血
+    setAttackHighlight({ fromPos: log.fromPos, toPos: log.toPos, side: log.side })
+    if (log.side === 'player') {
+      setVisualEnemyHp(prev => {
+        const next = [...prev]
+        next[log.toPos] = Math.max(0, next[log.toPos] - log.damage)
+        return next
+      })
+    } else {
+      setVisualPlayerHp(prev => {
+        const next = [...prev]
+        next[log.toPos] = Math.max(0, next[log.toPos] - log.damage)
+        return next
+      })
+    }
+
+    // 清除高亮
+    const clearTimer = setTimeout(() => {
+      if (!cancelled) setAttackHighlight(null)
+    }, 400)
+
+    // 高亮动画结束后停顿一下，再播放下一个事件
+    pauseTimerRef.current = setTimeout(() => {
+      if (cancelled) return
+
+      const nextIndex = animIndex + 1
+      if (nextIndex >= animLogsRef.current.length) {
+        // 全部播完 → 应用最终结算到 model
+        const f = animFinalRef.current
+        if (f) {
+          setData(prev => {
+            prev.playerSide = f.playerSide
+            prev.enemySide = f.enemySide
+            prev.phase = 'result'
+            prev.logs.push(...animLogsRef.current)
+            prev.roundIndex = Math.ceil(animLogsRef.current.length / 18)
+            return { ...prev }
+          })
+        }
+        // 清理回放状态
+        setAnimIndex(-1)
+        setVisualPlayerHp([])
+        setVisualEnemyHp([])
+      } else {
+        setAnimIndex(nextIndex)
+      }
+    }, 700) // 400ms 动画 + 300ms 停顿
+
+    return () => {
+      cancelled = true
+      clearTimeout(clearTimer)
+      clearTimeout(pauseTimerRef.current)
+    }
+  }, [animIndex])
+
+  const handleDeployAdd = (pos: number) => {
+    if (data.phase !== 'deploy') return
+    const cell = data.playerSide.cells[pos]
+    if (cell.type === 'ship') return
+    const remaining = maxCrew - getDeployedCrew(data)
+    if (remaining <= 0) return
+    const amount = Math.min(10, remaining)
+    const newAmount = (cell.type === 'crew' ? cell.currentHp : 0) + amount
+    deployCrew(data, pos, newAmount)
+    setData({ ...data })
+  }
+
+  const handleDeployReduce = (pos: number) => {
+    if (data.phase !== 'deploy') return
+    const cell = data.playerSide.cells[pos]
+    if (cell.type !== 'crew') return
+    if (cell.currentHp <= 10) {
+      deployCrew(data, pos, 0)
+    } else {
+      deployCrew(data, pos, cell.currentHp - 10)
+    }
+    setData({ ...data })
+  }
+
+  const startFight = (skipAnim = false) => {
+    const deployed = getDeployedCrew(data)
+    if (deployed === 0) return
+
+    // 预计算整场战斗
+    const sim = simulateFullBattle(data.playerSide, data.enemySide, data.whoStarts)
+
+    // 保存最终结算信息
+    animLogsRef.current = sim.allLogs
+    animFinalRef.current = {
+      playerSide: sim.finalPlayerSide,
+      enemySide: sim.finalEnemySide,
+      result: sim.result,
+    }
+
+    // 设置视觉 HP 为初始值
+    setVisualPlayerHp(data.playerSide.cells.map(c => c.currentHp))
+    setVisualEnemyHp(data.enemySide.cells.map(c => c.currentHp))
+
+    data.phase = 'fighting'
+    data.playerInitialCrew = deployed
+    setData({ ...data })
+
+    if (skipAnim) {
+      // 跳过动画，直接跳转到结算
+      const f = animFinalRef.current!
+      setData(prev => {
+        prev.playerSide = f.playerSide
+        prev.enemySide = f.enemySide
+        prev.phase = 'result'
+        prev.logs.push(...animLogsRef.current)
+        prev.roundIndex = Math.ceil(animLogsRef.current.length / 18)
+        return { ...prev }
+      })
+      setAnimIndex(-1)
+      setVisualPlayerHp([])
+      setVisualEnemyHp([])
+    } else {
+      setAnimIndex(0)
+    }
+  }
+
+  const autoDeployAll = () => {
+    const total = maxCrew
+    const positions = [0, 1, 2, 3, 5, 6, 7, 8]
+    const perCell = Math.floor(total / positions.length)
+    let extra = total % positions.length
+    positions.forEach((pos) => {
+      const amount = perCell + (extra > 0 ? 1 : 0)
+      if (extra > 0) extra--
+      deployCrew(data, pos, amount)
+    })
+    setData({ ...data })
+  }
+
+  // Compute highlight positions for each grid
+  const playerAtk = attackHighlight?.side === 'player' ? attackHighlight.fromPos : null
+  const playerDef = attackHighlight?.side === 'enemy' ? attackHighlight.toPos : null
+  const enemyAtk = attackHighlight?.side === 'enemy' ? attackHighlight.fromPos : null
+  const enemyDef = attackHighlight?.side === 'player' ? attackHighlight.toPos : null
+
+  return (
+    <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#1d140d]/76 backdrop-blur-sm">
+      <div className="relative flex h-[82%] w-[86%] flex-col overflow-hidden rounded-[22px] border border-[#7a5b36]/60 bg-[linear-gradient(180deg,rgba(48,32,21,0.99),rgba(30,21,14,0.98))] p-6 shadow-[0_30px_100px_rgba(28,16,8,0.9)]">
+        {/* Battle animation keyframes */}
+        <style>{`
+          @keyframes attack-pulse {
+            0%, 100% { box-shadow: 0 0 8px rgba(251,191,36,0.5); }
+            50% { box-shadow: 0 0 20px rgba(251,191,36,0.85), 0 0 40px rgba(251,191,36,0.35); }
+          }
+          @keyframes hit-flash {
+            0%, 100% { box-shadow: 0 0 6px rgba(239,68,68,0.5); }
+            50% { box-shadow: 0 0 18px rgba(239,68,68,0.85), 0 0 36px rgba(239,68,68,0.35); }
+          }
+          @keyframes projectile-fly {
+            0% { opacity: 1; transform: translateY(0) scale(1); }
+            50% { opacity: 1; transform: translateY(-8px) scale(1.3); }
+            100% { opacity: 0; transform: translateY(-16px) scale(0.7); }
+          }
+          .cell-attacker {
+            animation: attack-pulse 0.4s ease-in-out !important;
+          }
+          .cell-defender {
+            animation: hit-flash 0.4s ease-in-out !important;
+          }
+          .projectile-marker {
+            position: absolute;
+            top: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 16px;
+            color: #fbbf24;
+            filter: drop-shadow(0 0 4px rgba(251,191,36,0.8));
+            animation: projectile-fly 0.4s ease-out forwards;
+            pointer-events: none;
+          }
+        `}</style>
+        {/* Header */}
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.3em] text-amber-100/40">{isDrill ? '演习模式' : '遭遇战'}</p>
+            <h2 className="font-serif text-2xl text-[#fff4dd]">
+              {data.phase === 'deploy' && (isDrill ? '部署阵型' : '部署阵型 · 遭遇战')}
+              {data.phase === 'fighting' && '战斗中'}
+              {data.phase === 'result' && (isDrill ? '演习结束' : '战斗结束')}
+            </h2>
+          </div>
+          {data.phase !== 'fighting' && data.phase !== 'result' ? (
+            <button className="action" onClick={() => onClose()}>
+              关闭
+            </button>
+          ) : null}
+        </div>
+        {/* Main area: two grids face to face */}
+        <div className="flex items-start justify-center gap-64">
+          <BattleGrid
+            side={data.enemySide}
+            label="攻击方"
+            isPlayer={false}
+            facing="attacker"
+            highlightAtk={enemyAtk}
+            highlightDef={enemyDef}
+            visualHp={data.phase === 'fighting' ? visualEnemyHp : undefined}
+          />
+          <BattleGrid
+            side={data.playerSide}
+            label="防守方"
+            isPlayer={true}
+            facing="defender"
+            highlightAtk={playerAtk}
+            highlightDef={playerDef}
+            visualHp={data.phase === 'fighting' ? visualPlayerHp : undefined}
+            onCellClick={handleDeployAdd}
+            onCellReduce={data.phase === 'deploy' ? handleDeployReduce : undefined}
+          />
+        </div>
+        {/* Bottom bar */}
+        <div className="mt-4 flex items-center justify-between">
+          {/* Left: status info */}
+          <div className="flex items-center gap-4 text-sm text-[#ead8ba]">
+            {data.phase === 'deploy' ? (
+              <>
+                <span>
+                  可部署: <strong className="text-[#fff4dd]">{maxCrew - getDeployedCrew(data)}</strong> / {maxCrew}
+                </span>
+                <span className="text-[#7a5a36]">|</span>
+                <span className="text-xs text-amber-100/40">点击空白格部署(×10)，已部署格可用 [+]/[−] 调整</span>
+              </>
+            ) : data.phase === 'fighting' ? (
+              <>
+                <span>
+                  回合: <strong className="text-[#fff4dd]">{data.roundIndex}</strong>
+                </span>
+              </>
+            ) : (
+              <>
+                <span>
+                  日志: <strong className="text-[#fff4dd]">{data.logs.length}</strong> 条行动
+                </span>
+              </>
+            )}
+          </div>
+          {/* Right: action button */}
+          {data.phase === 'deploy' ? (
+            <div className="flex gap-2">
+              <button className="action" disabled={getDeployedCrew(data) === 0} onClick={() => startFight()}>
+                开始战斗
+              </button>
+              <button className="action" disabled={getDeployedCrew(data) === 0} onClick={() => startFight(true)}>
+                快速战斗
+              </button>
+              <button className="action" onClick={autoDeployAll}>
+                自动部署
+              </button>
+            </div>
+          ) : null}
+          {data.phase === 'fighting' ? (
+            <div className="flex gap-2">
+              <button className="action" onClick={() => {
+                // 跳过战斗：停止动画，直接结算
+                clearTimeout(pauseTimerRef.current)
+                const f = animFinalRef.current
+                if (f) {
+                  setData(prev => {
+                    prev.playerSide = f.playerSide
+                    prev.enemySide = f.enemySide
+                    prev.phase = 'result'
+                    prev.logs.push(...animLogsRef.current)
+                    prev.roundIndex = Math.ceil(animLogsRef.current.length / 18)
+                    return { ...prev }
+                  })
+                }
+                setAnimIndex(-1)
+                setAttackHighlight(null)
+                setVisualPlayerHp([])
+                setVisualEnemyHp([])
+              }}>
+                跳过战斗
+              </button>
+            </div>
+          ) : null}
+          {data.phase === 'result' && data.playerSide ? (
+            <div className="flex gap-3">
+              <button className="action" onClick={() => {
+                if (!isDrill) {
+                  const shipDamage = data.shipInitialDurability - data.playerSide.cells[4].currentHp
+                  const crewLoss = data.playerInitialCrew - getDeployedCrew(data)
+                  onClose({ shipDamage, crewLoss })
+                } else {
+                  onClose()
+                }
+              }}>
+                结算完成
+              </button>
+            </div>
+          ) : null}
+        </div>
+        {/* Result detail */}
+        {data.phase === 'result' ? (
+          <div className="mt-4 rounded-[16px] border border-[#7a5a36]/40 bg-[#2a1e14]/60 p-5 text-sm text-[#ead8ba]">
+            <p className="mb-2 text-xs uppercase tracking-[0.25em] text-amber-100/40">战果统计</p>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-[12px] border border-[#7a5a36]/35 bg-[#1a110a]/50 p-3 text-center">
+                <p className="text-xs text-amber-100/50">飞舟耐久损失</p>
+                <p className="mt-1 text-lg font-bold text-[#fff4dd]">
+                  {data.shipInitialDurability - data.playerSide.cells[4].currentHp} / {data.shipInitialDurability}
+                </p>
+              </div>
+              <div className="rounded-[12px] border border-[#7a5a36]/35 bg-[#1a110a]/50 p-3 text-center">
+                <p className="text-xs text-amber-100/50">船员损失</p>
+                <p className="mt-1 text-lg font-bold text-[#fff4dd]">
+                  {data.playerInitialCrew - getDeployedCrew(data) > 0
+                    ? data.playerInitialCrew - getDeployedCrew(data)
+                    : 0} / {data.playerInitialCrew}
+                </p>
+              </div>
+              <div className="rounded-[12px] border border-[#7a5a36]/35 bg-[#1a110a]/50 p-3 text-center">
+                <p className="text-xs text-amber-100/50">战斗结论</p>
+                <p className="mt-1 text-lg font-bold text-[#fff4dd]">
+                {isShipDestroyed(data.playerSide) ? '失败' : '胜利'}
+              </p>
+              </div>
+            </div>
+            {/* Action log */}
+            <div className="mt-4 max-h-[120px] overflow-y-auto rounded-[12px] border border-[#7a5a36]/25 bg-[#1a110a]/60 p-3 text-xs leading-6">
+              {data.logs.length === 0 ? (
+                <p className="text-amber-100/30">无战斗记录</p>
+              ) : (
+                data.logs.map((log, i) => (
+                  <p key={i} className={log.side === 'player' ? 'text-emerald-300/80' : 'text-red-300/80'}>
+                    [{log.side === 'player' ? '己方' : '敌方'}] {getCellLabel(log.fromPos)} → {getCellLabel(log.toPos)}，
+                    造成 {log.damage} 伤害{log.killed ? ' 💀' : ''}
+                  </p>
+                ))
+              )}
+            </div>
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }
@@ -615,11 +1155,13 @@ function AirshipStage({
   onIncreaseRetainerCapacity,
   onIncreaseCargoCapacity,
   onIncreaseMoveRange,
+  onStartDrill,
 }: {
   session: GameSession
   onIncreaseRetainerCapacity: () => void
   onIncreaseCargoCapacity: () => void
   onIncreaseMoveRange: () => void
+  onStartDrill: () => void
 }) {
   const retainerCost = session.config.economy.retainerUpgradeBaseCost * (session.player.retainerCapacity - 1)
   const cargoCost = session.config.economy.cargoUpgradeBaseCost * (session.player.cargoCapacity - 1)
@@ -650,12 +1192,20 @@ function AirshipStage({
         <FloatingPanel title="飞舟改造" subtitle="舱室设备">
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-[14px] border border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(86,58,35,0.92),rgba(55,37,24,0.9))] px-3 py-2 text-center">
-              <p className="text-xs text-[#cdb48a]">聚灵阵</p>
-              <p className="text-sm text-[#fff4dd]">{session.player.retainerCapacity} 人</p>
+              <p className="text-xs text-[#cdb48a]">耐久度</p>
+              <p className="text-sm text-[#fff4dd]">{session.player.airshipDurability}/{session.player.airshipMaxDurability}</p>
+            </div>
+            <div className="rounded-[14px] border border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(86,58,35,0.92),rgba(55,37,24,0.9))] px-3 py-2 text-center">
+              <p className="text-xs text-[#cdb48a]">船员</p>
+              <p className="text-sm text-[#fff4dd]">{session.player.airshipCrew}/{session.player.airshipMaxCrew}</p>
             </div>
             <div className="rounded-[14px] border border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(86,58,35,0.92),rgba(55,37,24,0.9))] px-3 py-2 text-center">
               <p className="text-xs text-[#cdb48a]">货仓</p>
               <p className="text-sm text-[#fff4dd]">{session.player.cargoCapacity}/5</p>
+            </div>
+            <div className="rounded-[14px] border border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(86,58,35,0.92),rgba(55,37,24,0.9))] px-3 py-2 text-center">
+              <p className="text-xs text-[#cdb48a]">聚灵阵</p>
+              <p className="text-sm text-[#fff4dd]">{session.player.retainerCapacity} 人</p>
             </div>
             <div className="rounded-[14px] border border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(86,58,35,0.92),rgba(55,37,24,0.9))] px-3 py-2 text-center">
               <p className="text-xs text-[#cdb48a]">动力</p>
@@ -674,6 +1224,16 @@ function AirshipStage({
           </p>
           <button className="action mt-3 w-full" onClick={() => setShowCaptainCabin(true)}>
             进入船长室
+          </button>
+        </FloatingPanel>
+
+        {/* 演习入口 */}
+        <FloatingPanel title="演习" subtitle="模拟战">
+          <p className="text-sm leading-6 text-[#ead8ba]">
+            不消耗资源的模拟战斗，用于测试阵型搭配。
+          </p>
+          <button className="action mt-3 w-full" onClick={onStartDrill}>
+            开始演习
           </button>
         </FloatingPanel>
       </div>
