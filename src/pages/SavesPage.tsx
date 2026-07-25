@@ -48,7 +48,8 @@ export default function SavesPage({ onNavigate }: { onNavigate: (page: 'game' | 
                   <div className="flex flex-wrap items-center justify-between gap-4">
                     <div>
                       <h2 className="font-serif text-xl text-[#fff4dd]">{save.title}</h2>
-                      <p className="mt-2 text-sm text-[#cdb48a]">
+                      <p className="mt-1 text-xs text-[#b49367]">{new Date(save.savedAt).toLocaleString()}</p>
+                      <p className="mt-1 text-sm text-[#cdb48a]">
                         回合 {save.turn} · 灵石 {save.spiritStone} · 已确认据点 {save.exploredNodes}
                       </p>
                     </div>

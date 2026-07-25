@@ -489,6 +489,7 @@ export function createNewGame(config: GameConfig = defaultConfig, seed = Date.no
       edges,
       selectedNodeId: startNode.id,
       pendingPlan: undefined,
+      generatedEvents: [],
       logs: ['你获得了限期开拓许可，商会飞舟从起始城镇启航。'],
       finalObjectiveUnlocked: false,
       finalObjectiveCompleted: false,

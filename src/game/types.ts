@@ -150,6 +150,8 @@ export interface WorldState {
   edges: EdgeState[]
   selectedNodeId: string
   pendingPlan?: TurnPlanState
+  pendingEvent?: PendingEvent
+  generatedEvents: StoryEvent[]
   logs: string[]
   finalObjectiveUnlocked: boolean
   finalObjectiveCompleted: boolean
@@ -233,6 +235,83 @@ export interface GameSession {
   player: PlayerState
   guild: GuildState
   storyFlags: Record<string, boolean>
+}
+
+/* ====================== 剧情事件系统 ====================== */
+
+export type DialogMode = 'plain' | 'inline-image' | 'portrait-left' | 'portrait-right'
+
+export type TriggerType = 'arrive' | 'turn_end' | 'quest_complete' | 'battle_end' | 'init'
+
+export interface EventCondition {
+  flagsRequired?: string[]
+  flagsBlocked?: string[]
+  itemsRequired?: string[]
+  cargoRequired?: string[]
+  spiritStoneMin?: number
+  spiritStoneMax?: number
+  turnMin?: number
+  turnMax?: number
+  nodeType?: NodeType
+  nodeId?: string
+  randomChance?: number
+}
+
+export interface EventEffect {
+  type:
+    | 'set_flag'
+    | 'clear_flag'
+    | 'add_spirit_stone'
+    | 'remove_spirit_stone'
+    | 'add_item'
+    | 'remove_item'
+    | 'add_cargo'
+    | 'remove_cargo'
+    | 'repair_airship'
+    | 'damage_airship'
+    | 'add_crew'
+    | 'remove_crew'
+    | 'set_prosperity'
+    | 'start_combat'
+  flag?: string
+  amount?: number
+  itemName?: string
+  productId?: string
+}
+
+export interface StoryChoice {
+  label: string
+  effects?: EventEffect[]
+  gotoStep?: number
+}
+
+export interface StoryStep {
+  mode?: DialogMode
+  speaker?: string
+  characterName?: string
+  portraitUrl?: string
+  imageUrl?: string
+  content: string
+  effects?: EventEffect[]
+  choices?: StoryChoice[]
+}
+
+export interface StoryEvent {
+  id: string
+  title?: string
+  trigger: TriggerType
+  triggerFilter?: { nodeType?: NodeType; battleResult?: 'win' | 'lose' }
+  condition: EventCondition
+  priority: number
+  repeatable: boolean
+  flagOnStart?: string
+  steps: StoryStep[]
+  onComplete?: EventEffect[]
+}
+
+export interface PendingEvent {
+  eventId: string
+  stepIndex: number
 }
 
 export interface SaveMeta {

@@ -21,7 +21,7 @@ import {
   getItemCount,
 } from '@/game/engine'
 import { itemDefinitions, itemNameMap } from '@/game/data'
-import { STORY_EVENTS, markEventTriggered, isEventTriggered } from '@/game/storyEvents'
+import { checkEvents, advanceEvent, tryStartEvent, buildDialogConfig } from '@/game/eventEngine'
 import {
   createBattleState, deployCrew, getDeployedCrew,
   simulateFullBattle, generateRandomEncounter,
@@ -31,9 +31,6 @@ import {
 import { useGameStore } from '@/store/gameStore'
 import SettingsPanel from '@/components/SettingsPanel'
 import type { BuildingType, GameSession, QuestState } from '@/game/types'
-
-const base = import.meta.env.BASE_URL
-const characterPortraitUrl = `${base}images/portraits/char-01.webp`
 
 type MainView = 'town' | 'airship' | 'map'
 type DialogMode = 'plain' | 'inline-image' | 'portrait-left' | 'portrait-right'
@@ -138,112 +135,58 @@ const [dialogConfig, setDialogConfig] = useState<{
   const acceptQuest = useGameStore((state) => state.acceptQuest)
   const completeQuest = useGameStore((state) => state.completeQuest)
   const saveCurrent = useGameStore((state) => state.saveCurrent)
+  const loadSession = useGameStore((state) => state.loadSession)
 
   useEffect(() => {
     refreshSaves()
   }, [refreshSaves])
 
-  // ── 初始引导：3 步连续对话框 ──
+  // ── 初始引导：从事件系统驱动 ──
+  function handleEventAdvance(choiceIndex?: number) {
+    const currentSession = useGameStore.getState().session
+    if (!currentSession) return
+    const result = advanceEvent(currentSession, choiceIndex)
+    loadSession(result.session)
+    if (result.step) {
+      setDialogConfig(buildDialogConfig(result.step, handleEventAdvance))
+    } else {
+      setDialogConfig(null)
+      // 事件链：完成后检查是否还有下一个 init 事件
+      const chainResult = checkEvents('init', useGameStore.getState().session!)
+      if (chainResult) {
+        loadSession(chainResult.session)
+        setDialogConfig(buildDialogConfig(chainResult.step, handleEventAdvance))
+      }
+    }
+  }
+
+  // init 触发器：开局引导
   useEffect(() => {
     if (!session) return
-    if (isEventTriggered(session, STORY_EVENTS.INTRO_DIALOG)) return
-    markEventTriggered(session, STORY_EVENTS.INTRO_DIALOG)
-    showIntroStep(0)
-
-    function showIntroStep(step: number) {
-      const steps: { title: string; content: string }[] = [
-        {
-          title: '开拓许可',
-          content:
-            '你手中的灵材与灵石，是起点，也是唯一可用的本钱。\n\n天灾后的碎片疆域上，商会如野草般生灭。你领到的开拓许可期限有限，在那之前，是建起横跨诸地的商路、让商会名号传遍七十二城，还是灰溜溜地在期限到来前清账离场——全看你自己。\n\n飞舟已泊在码头，地图上尚有大片迷雾。第一步怎么走，你来定。',
-        },
-        {
-          title: '城镇一览',
-          content:
-            '你所在的据点是一座城镇——这里是你的行动枢纽。\n\n• 酒馆（知客亭/营地）：可以打听新据点和道路传闻，也能接取或交付委托。\n• 交易所：买卖本地特产，低买高卖赚取差价。\n• 城主府（分号所在地）：已设立分号的城镇可在此开设商会，管理商路与产业。\n\n先去酒馆或交易所看看，熟悉一下环境吧。',
-        },
-        {
-          title: '启程资金',
-          content:
-            '商会账上虽有些底子，但跑商周转总归需要更多灵石。会长助理特批了一笔额外资金，已划入商会账册。\n\n省着点花——飞舟维护、供奉酬劳、货物押金，处处都要灵石。',
-        },
-      ]
-      if (step >= steps.length) {
-        setDialogConfig(null)
-        return
-      }
-      setDialogConfig({
-        mode: 'portrait-right',
-        portraitUrl: characterPortraitUrl,
-        characterName: '会长助理',
-        title: steps[step].title,
-        content: steps[step].content,
-        buttons:
-          step === 2
-            ? [
-                {
-                  label: '收下灵石（+200）',
-                  onClick: () => {
-                    session.player.spiritStone += 200
-                    setDialogConfig(null)
-                  },
-                },
-              ]
-            : [{ label: '继续', onClick: () => showIntroStep(step + 1) }],
-      })
+    const result = checkEvents('init', session)
+    if (result) {
+      loadSession(result.session)
+      setDialogConfig(buildDialogConfig(result.step, handleEventAdvance))
     }
   }, [session])
 
   // ── 飞舟首次进入引导 ──
   useEffect(() => {
     if (!session || mainView !== 'airship') return
-    if (isEventTriggered(session, STORY_EVENTS.AIRSHIP_INTRO)) return
-    markEventTriggered(session, STORY_EVENTS.AIRSHIP_INTRO)
-    setDialogConfig({
-        mode: 'portrait-right',
-        portraitUrl: characterPortraitUrl,
-        characterName: '会长助理',
-        title: '飞舟总览',
-      content:
-        '飞舟是你的移动总部，可在此查看商会资产。\n\n• 行囊：查看随身携带的货物与道具。\n• 改造：消耗灵石升级飞舟的货仓容量、移动范围和供奉席位。\n\n定期升级飞舟，才能把商路铺得更远。',
-      buttons: [{ label: '知道了', onClick: () => setDialogConfig(null) }],
-    })
+    const result = tryStartEvent('intro_airship', session)
+    if (result) {
+      loadSession(result.session)
+      setDialogConfig(buildDialogConfig(result.step, handleEventAdvance))
+    }
   }, [mainView, session])
 
   // ── 地图首次进入引导（2 步） ──
   useEffect(() => {
     if (!session || mainView !== 'map') return
-    if (isEventTriggered(session, STORY_EVENTS.MAP_INTRO)) return
-    markEventTriggered(session, STORY_EVENTS.MAP_INTRO)
-    showMapIntroStep(0)
-
-    function showMapIntroStep(step: number) {
-      const steps: { title: string; content: string }[] = [
-        {
-          title: '大地图指南',
-          content:
-            '在这片碎片疆域上，移动与探索是扩张商路的基础。\n\n• 移动：选中已确认道路的据点，消耗移动力前往。高移动力仅在已确认道路上生效。\n• 探索：选中仅知传闻的据点或道路，执行"探索"指令可将其确认为可用路线——每次探索固定消耗一回合。\n• 打听传闻：据点内的酒馆（知客亭/营地）可以打听新据点和新道路的消息。\n• 过回合：结束当前回合，推进商会运作、结算收入与供奉任务。\n\n先确认周边的道路和据点，摸清这片区域的底细。',
-        },
-        {
-          title: '商路与收入',
-          content:
-            '商路是商会收入的核心来源。\n\n• 在据点间建立商路，需要占用一名供奉常驻维护。\n• 商路会将对端据点全部本地产物带入收入计算，但不进入交易所流通。\n• 城镇据点可通过提升繁荣度来加成该商路收入。\n• 注意：商路不增加交易品种类，仅增加灵石收入。\n\n供奉有限，商路需要精挑细选——连接高产出据点才是最划算的买卖。',
-        },
-      ]
-      if (step >= steps.length) {
-        setDialogConfig(null)
-        return
-      }
-      setDialogConfig({
-        mode: 'portrait-right',
-        portraitUrl: characterPortraitUrl,
-        characterName: '会长助理',
-        title: steps[step].title,
-        content: steps[step].content,
-        buttons: [
-          { label: step < steps.length - 1 ? '继续' : '出发', onClick: () => showMapIntroStep(step + 1) },
-        ],
-      })
+    const result = tryStartEvent('intro_map', session)
+    if (result) {
+      loadSession(result.session)
+      setDialogConfig(buildDialogConfig(result.step, handleEventAdvance))
     }
   }, [mainView, session])
 
