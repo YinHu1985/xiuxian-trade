@@ -28,6 +28,8 @@ export const defaultConfig: GameConfig = {
     retainerUpgradeBaseCost: 200,
     cargoUpgradeBaseCost: 120,
     moveRangeUpgradeBaseCost: 180,
+    repairAirshipCost: 30,
+    recruitCrewCost: 20,
   },
   market: {
     minModifier: 0.5,

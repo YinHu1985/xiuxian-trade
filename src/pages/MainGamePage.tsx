@@ -129,6 +129,8 @@ const [dialogConfig, setDialogConfig] = useState<{
   const increaseRetainerCapacity = useGameStore((state) => state.increaseRetainerCapacity)
   const increaseCargoCapacity = useGameStore((state) => state.increaseCargoCapacity)
   const increaseMoveRange = useGameStore((state) => state.increaseMoveRange)
+  const repairAirship = useGameStore((state) => state.repairAirship)
+  const recruitCrew = useGameStore((state) => state.recruitCrew)
   const buildBuilding = useGameStore((state) => state.buildBuilding)
   const createTradeLink = useGameStore((state) => state.createTradeLink)
   const clearPendingPlan = useGameStore((state) => state.clearPendingPlan)
@@ -376,6 +378,7 @@ const [dialogConfig, setDialogConfig] = useState<{
                   onIncreaseRetainerCapacity={increaseRetainerCapacity}
                   onIncreaseCargoCapacity={increaseCargoCapacity}
                   onIncreaseMoveRange={increaseMoveRange}
+                  onRepairAirship={repairAirship}
                   onStartDrill={() => setBattleData(createBattleState(session.player.airshipDurability))}
                 />
               ) : null}
@@ -419,6 +422,7 @@ const [dialogConfig, setDialogConfig] = useState<{
                   onTavernRumor={tavernRumor}
                   onAcceptQuest={(quest) => showQuestAcceptDialog(quest)}
                   onCompleteQuest={(quest) => showQuestCompleteDialog(quest)}
+                  onRecruitCrew={recruitCrew}
                 />
               ) : null}
               {overlayWindow.kind === 'market' ? (
@@ -697,6 +701,7 @@ function BattleModal({
   const [animIndex, setAnimIndex] = useState(-1)           // -1 = 未回放
   const [visualPlayerHp, setVisualPlayerHp] = useState<number[]>([])
   const [visualEnemyHp, setVisualEnemyHp] = useState<number[]>([])
+  const [confirmZeroDeploy, setConfirmZeroDeploy] = useState(false)
   const animLogsRef = useRef<BattleLogEntry[]>([])
   const animFinalRef = useRef<{
     playerSide: BattleSide
@@ -962,10 +967,22 @@ function BattleModal({
           {/* Right: action button */}
           {data.phase === 'deploy' ? (
             <div className="flex gap-2">
-              <button className="action" disabled={getDeployedCrew(data) === 0} onClick={() => startFight()}>
+              <button className="action" onClick={() => {
+                if (getDeployedCrew(data) === 0) {
+                  setConfirmZeroDeploy(true)
+                } else {
+                  startFight()
+                }
+              }}>
                 开始战斗
               </button>
-              <button className="action" disabled={getDeployedCrew(data) === 0} onClick={() => startFight(true)}>
+              <button className="action" onClick={() => {
+                if (getDeployedCrew(data) === 0) {
+                  setConfirmZeroDeploy(true)
+                } else {
+                  startFight(true)
+                }
+              }}>
                 快速战斗
               </button>
               <button className="action" onClick={autoDeployAll}>
@@ -1056,6 +1073,30 @@ function BattleModal({
           </div>
         ) : null}
       </div>
+
+      {/* Zero-deploy confirm dialog */}
+      {confirmZeroDeploy ? (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#1d140d]/60 backdrop-blur-sm rounded-[22px]">
+          <div className="mx-6 rounded-[18px] border border-[#b8863a]/70 bg-[linear-gradient(180deg,rgba(80,50,20,0.98),rgba(40,25,12,0.97))] p-6 text-center shadow-[0_20px_60px_rgba(20,10,4,0.8)]">
+            <p className="text-sm text-amber-100/60">警告</p>
+            <p className="mt-3 text-base leading-7 text-[#ead8ba]">
+              不部署部队会导致飞舟单独作战，<br />
+              如是无飞舟的战斗可能导致直接失败。
+            </p>
+            <div className="mt-6 flex justify-center gap-3">
+              <button className="action" onClick={() => {
+                setConfirmZeroDeploy(false)
+                startFight()
+              }}>
+                确认战斗
+              </button>
+              <button className="action" onClick={() => setConfirmZeroDeploy(false)}>
+                取消部署
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -1155,17 +1196,20 @@ function AirshipStage({
   onIncreaseRetainerCapacity,
   onIncreaseCargoCapacity,
   onIncreaseMoveRange,
+  onRepairAirship,
   onStartDrill,
 }: {
   session: GameSession
   onIncreaseRetainerCapacity: () => void
   onIncreaseCargoCapacity: () => void
   onIncreaseMoveRange: () => void
+  onRepairAirship: () => void
   onStartDrill: () => void
 }) {
   const retainerCost = session.config.economy.retainerUpgradeBaseCost * (session.player.retainerCapacity - 1)
   const cargoCost = session.config.economy.cargoUpgradeBaseCost * (session.player.cargoCapacity - 1)
   const moveRangeCost = session.config.economy.moveRangeUpgradeBaseCost * session.player.moveRange
+  const repairCost = session.config.economy.repairAirshipCost
   const cargoMaxed = session.player.cargoCapacity >= 5
   const moveRangeMaxed = session.player.moveRange >= 10
   const moveRangeBlocked = session.player.moveRange === 3 && !session.world.lastMoveRangeUpgradeUnlocked
@@ -1212,6 +1256,15 @@ function AirshipStage({
               <p className="text-sm text-[#fff4dd]">{session.player.moveRange}</p>
             </div>
           </div>
+          {session.player.airshipDurability < session.player.airshipMaxDurability ? (
+            <button
+              className="action mt-3 w-full"
+              disabled={session.player.spiritStone < repairCost}
+              onClick={onRepairAirship}
+            >
+              修理飞舟（{repairCost} 灵石）
+            </button>
+          ) : null}
           <button className="action mt-3 w-full" onClick={() => setShowModifications(true)}>
             进入改造舱
           </button>
@@ -1663,6 +1716,7 @@ function TavernWindow({
   onTavernRumor,
   onAcceptQuest,
   onCompleteQuest,
+  onRecruitCrew,
 }: {
   session: GameSession
   nodeId: string
@@ -1670,6 +1724,7 @@ function TavernWindow({
   onTavernRumor: () => void
   onAcceptQuest: (quest: QuestState) => void
   onCompleteQuest: (quest: QuestState) => void
+  onRecruitCrew: () => void
 }) {
   const currentNode = getCurrentNode(session)
   const targetNode = session.world.nodes.find((node) => node.id === nodeId) ?? currentNode
@@ -1705,6 +1760,8 @@ function TavernWindow({
   }, [session.world.logs])
 
   const hasAnyQuests = availableQuests.length > 0 || completableQuests.length > 0
+  const recruitCost = session.config.economy.recruitCrewCost
+  const canRecruit = targetNode.type === 'town' && isLocal
 
   return (
     <div className="grid h-full grid-cols-[0.9fr_1.1fr] gap-4">
@@ -1720,6 +1777,15 @@ function TavernWindow({
           <button className="action mt-6" onClick={onTavernRumor} disabled={!isLocal}>
             {isLocal ? venue.actionLabel : '异地只可查阅，不可当场打听'}
           </button>
+          {canRecruit ? (
+            <button
+              className="action mt-3"
+              disabled={session.player.spiritStone < recruitCost || session.player.airshipCrew >= session.player.airshipMaxCrew}
+              onClick={onRecruitCrew}
+            >
+              招募船员（{recruitCost} 灵石/10人）
+            </button>
+          ) : null}
         </div>
 
         {/* Quests Section */}

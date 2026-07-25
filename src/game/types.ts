@@ -199,6 +199,8 @@ export interface EconomyConfig {
   retainerUpgradeBaseCost: number
   cargoUpgradeBaseCost: number
   moveRangeUpgradeBaseCost: number
+  repairAirshipCost: number
+  recruitCrewCost: number
 }
 
 export interface MarketConfig {

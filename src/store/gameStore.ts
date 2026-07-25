@@ -12,7 +12,9 @@ import {
   increaseCargoCapacity,
   increaseMoveRange,
   increaseRetainerCapacity,
+  recruitCrew,
   removeTradeLink,
+  repairAirship,
   scheduleConstruction,
   scheduleRepairGate,
   scheduleRetainerDispatch,
@@ -46,6 +48,8 @@ interface GameStore {
   increaseRetainerCapacity: () => void
   increaseCargoCapacity: () => void
   increaseMoveRange: () => void
+  repairAirship: () => void
+  recruitCrew: () => void
   scheduleRetainerDispatch: (targetNodeId: string) => void
   scheduleRepairGate: () => void
   clearPendingPlan: () => void
@@ -88,6 +92,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set((state) => ({ session: state.session ? increaseCargoCapacity(state.session) : null })),
   increaseMoveRange: () =>
     set((state) => ({ session: state.session ? increaseMoveRange(state.session) : null })),
+  repairAirship: () =>
+    set((state) => ({ session: state.session ? repairAirship(state.session) : null })),
+  recruitCrew: () =>
+    set((state) => ({ session: state.session ? recruitCrew(state.session) : null })),
   scheduleRetainerDispatch: (targetNodeId) =>
     set((state) => ({ session: state.session ? scheduleRetainerDispatch(state.session, targetNodeId) : null })),
   scheduleRepairGate: () => set((state) => ({ session: state.session ? scheduleRepairGate(state.session) : null })),

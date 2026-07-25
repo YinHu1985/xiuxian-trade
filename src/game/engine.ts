@@ -1048,3 +1048,28 @@ function getShortestPathLength(session: GameSession, fromId: string, toId: strin
   }
   return -1
 }
+
+/* ====================== 飞舟维护 ====================== */
+
+export function repairAirship(session: GameSession) {
+  const next = cloneSession(session)
+  const cost = next.config.economy.repairAirshipCost
+  if (next.player.spiritStone < cost) return next
+  if (next.player.airshipDurability >= next.player.airshipMaxDurability) return next
+  next.player.spiritStone -= cost
+  next.player.airshipDurability = next.player.airshipMaxDurability
+  addLog(next, `花费 ${cost} 灵石修复了飞舟，耐久度恢复至 ${next.player.airshipMaxDurability}。`)
+  return next
+}
+
+export function recruitCrew(session: GameSession) {
+  const next = cloneSession(session)
+  const cost = next.config.economy.recruitCrewCost
+  if (next.player.spiritStone < cost) return next
+  if (next.player.airshipCrew >= next.player.airshipMaxCrew) return next
+  next.player.spiritStone -= cost
+  const added = Math.min(10, next.player.airshipMaxCrew - next.player.airshipCrew)
+  next.player.airshipCrew += added
+  addLog(next, `花费 ${cost} 灵石招募了 ${added} 名船员，当前船员 ${next.player.airshipCrew}/${next.player.airshipMaxCrew}。`)
+  return next
+}
