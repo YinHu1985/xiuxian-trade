@@ -172,6 +172,9 @@ function getAvailableEvents(
       const node = session.world.nodes.find((n) => n.id === session.player.currentNodeId)
       if (node?.type !== ev.triggerFilter.nodeType) return false
     }
+    if (ev.triggerFilter?.actionType) {
+      if (context?.actionType !== ev.triggerFilter.actionType) return false
+    }
     return true
   })
 

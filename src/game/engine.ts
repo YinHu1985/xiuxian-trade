@@ -886,6 +886,8 @@ export function generateNodeQuests(session: GameSession, nodeId: string) {
       productId: template.productId,
       targetNodeId: template.targetNodeId,
       tradeAction: template.tradeAction,
+      minReputation: 0,
+      difficulty: 1,
     })
   })
 }
@@ -894,6 +896,12 @@ export function acceptQuest(session: GameSession, questId: string) {
   const next = cloneSession(session)
   const quest = next.guild.quests.find((q) => q.id === questId)
   if (!quest || quest.status !== 'available') return next
+
+  // 声望门槛检查
+  if (quest.minReputation) {
+    const node = getNode(next, quest.nodeId)
+    if (node && node.reputation < quest.minReputation) return next
+  }
 
   quest.status = 'active'
 
@@ -990,6 +998,13 @@ export function completeQuest(session: GameSession, questId: string) {
 
   quest.status = 'completed'
   addLog(next, `完成了「${quest.title}」，获得 ${quest.reward} 灵石的报酬。`)
+
+  // 增加据点声望
+  const completedNode = getNode(next, quest.nodeId)
+  if (completedNode) {
+    completedNode.reputation = Math.min(200, completedNode.reputation + quest.difficulty)
+  }
+
   return next
 }
 

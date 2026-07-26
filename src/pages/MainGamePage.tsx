@@ -1092,6 +1092,7 @@ function TownStage({
           <div className="grid grid-cols-2 gap-3">
             <StatChip label="类型" value={nodeTypeLabelMap[currentNode.type]} />
             {currentNode.type === 'town' ? <StatChip label="繁荣" value={currentNode.prosperity ?? 0} /> : null}
+            <StatChip label="本地声望" value={currentNode.reputation} />
             <StatChip label="货仓" value={`${session.player.cargo.length}/${session.player.cargoCapacity}`} />
           </div>
           <div className="mt-4 rounded-[14px] border border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(86,58,35,0.92),rgba(55,37,24,0.9))] px-4 py-3">
@@ -1454,6 +1455,7 @@ function MapStage({
               <StatChip label="状态" value={selectedNode.discovery === 'confirmed' ? '确认' : selectedNode.discovery === 'rumor' ? '传闻' : '未知'} />
               <StatChip label="类型" value={nodeTypeLabelMap[selectedNode.type]} />
               {selectedNode.type === 'town' ? <StatChip label="繁荣" value={selectedNode.prosperity ?? 0} /> : null}
+              <StatChip label="本地声望" value={selectedNode.reputation} />
               <StatChip label="商号收益" value={selectedNode.branchId ? getBranchIncome(session, selectedNode.id) : 0} />
             </div>
             <div className="mt-3 rounded-[14px] border border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(86,58,35,0.92),rgba(55,37,24,0.9))] px-4 py-3">
@@ -1744,7 +1746,10 @@ function TavernWindow({
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm text-[#fff4dd]">{quest.title}</p>
-                      <p className="mt-1 text-xs text-[#cdb48a]">委托人：{quest.npcName}</p>
+                      <p className="mt-1 text-xs text-[#cdb48a]">
+                        委托人：{quest.npcName}
+                        {quest.minReputation ? <span className="ml-2 text-[#b88b54]">· 需要声望 {quest.minReputation}</span> : null}
+                      </p>
                     </div>
                     <button className="action !px-3 !py-2" onClick={() => onAcceptQuest(quest)}>
                       接取
@@ -2239,6 +2244,7 @@ function TownSidebar({
         <div className="grid grid-cols-2 gap-3">
           <StatChip label="类型" value={nodeTypeLabelMap[currentNode.type]} />
           {currentNode.type === 'town' ? <StatChip label="繁荣" value={currentNode.prosperity ?? 0} /> : null}
+          <StatChip label="本地声望" value={currentNode.reputation} />
           <StatChip label="货仓" value={`${session.player.cargo.length}/${session.player.cargoCapacity}`} />
         </div>
       </CompactPanel>

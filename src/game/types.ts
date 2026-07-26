@@ -37,6 +37,7 @@ export interface NodeState {
   inventory: Record<string, InventoryEntry>
   market: MarketModifierState
   branchId?: string
+  reputation: number
 }
 
 export interface EdgeState {
@@ -81,6 +82,8 @@ export interface QuestState {
   targetNodeId?: string
   letterItemId?: string
   tradeAction?: 'buy' | 'sell'
+  minReputation?: number
+  difficulty: number
 }
 
 export interface BuildingState {
@@ -241,7 +244,7 @@ export interface GameSession {
 
 export type DialogMode = 'plain' | 'inline-image' | 'portrait-left' | 'portrait-right'
 
-export type TriggerType = 'arrive' | 'turn_end' | 'quest_complete' | 'battle_end' | 'init'
+export type TriggerType = 'arrive' | 'turn_end' | 'quest_complete' | 'battle_end' | 'init' | 'action'
 
 export interface EventCondition {
   flagsRequired?: string[]
@@ -300,7 +303,7 @@ export interface StoryEvent {
   id: string
   title?: string
   trigger: TriggerType
-  triggerFilter?: { nodeType?: NodeType; battleResult?: 'win' | 'lose' }
+  triggerFilter?: { nodeType?: NodeType; battleResult?: 'win' | 'lose'; actionType?: string }
   condition: EventCondition
   priority: number
   repeatable: boolean

@@ -289,6 +289,7 @@ function createNodes(config: GameConfig, seed: number) {
       baseProducts: [],
       inventory: {},
       market: createMarketState(),
+      reputation: 0,
     }
     node.baseProducts = pickSpecialtyProducts(type, rng)
     node.inventory = createInventoryForNode(node)
