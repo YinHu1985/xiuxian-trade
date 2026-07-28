@@ -137,6 +137,15 @@ const [dialogConfig, setDialogConfig] = useState<{
     }
   }, [mainView, session])
 
+  useEffect(() => {
+    if (!session || overlayWindow?.kind !== 'ruinExplore') return
+    const result = tryStartEvent('intro_ruin', session)
+    if (result) {
+      loadSession(result.session)
+      setDialogConfig(buildDialogConfig(result.step, handleEventAdvance))
+    }
+  }, [overlayWindow, session])
+
   const stageStyle = useMemo(
     () => ({
       width: 'min(100vw, calc(100vh * 16 / 9))',

@@ -2,6 +2,7 @@ import type { StoryEvent } from '@/game/types'
 import { introEvents } from '@/game/events/introEvents'
 import { airshipEvents } from '@/game/events/airshipEvents'
 import { mapEvents } from '@/game/events/mapEvents'
+import { ruinEvents } from '@/game/events/ruinEvents'
 
 let registry: StoryEvent[] | null = null
 
@@ -14,6 +15,7 @@ export function getEventRegistry(): StoryEvent[] {
       ...introEvents,
       ...airshipEvents,
       ...mapEvents,
+      ...ruinEvents,
     ]
   }
   return registry
