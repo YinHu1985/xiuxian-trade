@@ -58,7 +58,7 @@ export default function GuildSidebar({ session, onCreateTradeLink, onDispatchRet
             <Empty text="需要当前据点和目标据点都设有商号后，才能建立贸易连接。" />
           )}
           <div className="rounded-2xl border border-white/8 bg-slate-900/50 px-4 py-3 text-sm text-slate-300">
-            已建立 {session.guild.tradeLinks.length}/{session.player.tradeLinkCapacity} 条贸易连接
+            已建立 {session.guild.tradeLinks.length} 条贸易连接（上限跟随供奉编制）
           </div>
         </div>
       </Panel>

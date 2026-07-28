@@ -138,6 +138,8 @@ function applyEffect(session: GameSession, effect: EventEffect): void {
       // combat is handled by UI, not by engine
       // this effect just sets a flag; the UI checks for it
       if (effect.flag) session.storyFlags[effect.flag] = true
+      // 记录事件 ID，战斗结束后触发 battle_end 事件
+      session.world.pendingBattleEventId = session.world.pendingEvent?.eventId
       break
   }
 }
@@ -174,6 +176,9 @@ function getAvailableEvents(
     }
     if (ev.triggerFilter?.actionType) {
       if (context?.actionType !== ev.triggerFilter.actionType) return false
+    }
+    if (ev.triggerFilter?.battleResult) {
+      if (context?.battleResult !== ev.triggerFilter.battleResult) return false
     }
     return true
   })

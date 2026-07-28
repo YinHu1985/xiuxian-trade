@@ -1,4 +1,4 @@
-import { allCategories, getRandomNpcName, itemDefinitions, productMap } from '@/game/data'
+import { allCategories, getRandomNpcName, itemDefinitions, productMap, sectItemMap, itemNameMap, obstacleToItemMap, obstacleLabelMap } from '@/game/data'
 import type {
   BranchState,
   BuildingType,
@@ -214,6 +214,7 @@ function finalizeTurn(session: GameSession, message: string, traveledEdges: Edge
       }
     }
   })
+  // TODO: 终局条件尚未正式设计，当前为占位逻辑，后续会统一重构
   if (session.guild.branches.length >= session.config.progress.finalObjectiveProsperityThreshold && session.player.spiritStone >= 1200) {
     session.world.finalObjectiveUnlocked = true
   }
@@ -996,6 +997,22 @@ export function completeQuest(session: GameSession, questId: string) {
     }
   }
 
+  // 法宝寻回任务：检查玩家是否有对应的遗失法宝，并移除
+  if (quest.type === 'relic' && quest.relicId) {
+    const relicIdx = next.player.items.findIndex((item) => item.data?.relicId === quest.relicId)
+    if (relicIdx === -1) return next
+    next.player.items.splice(relicIdx, 1)
+    next.player.spiritStone += quest.reward
+    // 加声望
+    const relic = next.world.relics.find((r) => r.id === quest.relicId)
+    if (relic) {
+      const relicNode = getNode(next, relic.sourceSectId)
+      if (relicNode) {
+        relicNode.reputation = Math.min(200, relicNode.reputation + relic.rewardReputation)
+      }
+    }
+  }
+
   quest.status = 'completed'
   addLog(next, `完成了「${quest.title}」，获得 ${quest.reward} 灵石的报酬。`)
 
@@ -1087,4 +1104,322 @@ export function recruitCrew(session: GameSession) {
   next.player.airshipCrew += added
   addLog(next, `花费 ${cost} 灵石招募了 ${added} 名船员，当前船员 ${next.player.airshipCrew}/${next.player.airshipMaxCrew}。`)
   return next
+}
+
+/* ====================== 宗门拜山 ====================== */
+
+import type { RuinObstacleType, RuinExplorationNode, RuinExplorationEdge, RuinExplorationState } from '@/game/types'
+
+export function getSectSaleInfo(session: GameSession, nodeId: string) {
+  const node = getNode(session, nodeId)
+  if (!node || node.type !== 'sect') return undefined
+  const productIds = node.baseProducts
+  for (const productId of productIds) {
+    const product = productMap[productId]
+    if (product && sectItemMap[product.category]) {
+      return {
+        category: product.category,
+        itemId: sectItemMap[product.category].itemId,
+        itemName: itemNameMap[sectItemMap[product.category].itemId],
+        price: sectItemMap[product.category].price,
+      }
+    }
+  }
+  return undefined
+}
+
+export function buySectItem(session: GameSession) {
+  const next = cloneSession(session)
+  const node = getCurrentNode(next)
+  const info = getSectSaleInfo(next, node.id)
+  if (!info || next.player.spiritStone < info.price) return next
+  next.player.spiritStone -= info.price
+  const def = { id: info.itemId, name: info.itemName, stackable: true }
+  const existing = next.player.items.find((item) => item.name === def.name && item.stackable)
+  if (existing) {
+    existing.count += 1
+  } else {
+    const id = `item-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    next.player.items.push({ id, name: def.name, stackable: true, count: 1 })
+  }
+  addLog(next, `从 ${node.name} 求购 ${info.itemName} 一张，花费 ${info.price} 灵石。`)
+  return next
+}
+
+/* ====================== 遗迹探索 ====================== */
+
+function ruinRng(session: GameSession, nodeId: string) {
+  let value = (session.world.seed + nodeId.split('-').reduce((a, b) => a + b.charCodeAt(0), 0)) % 2147483647
+  if (value <= 0) value += 2147483646
+  return () => {
+    value = (value * 16807) % 2147483647
+    return (value - 1) / 2147483646
+  }
+}
+
+function generateRuinExploration(rng: () => number): RuinExplorationState {
+  const layerCount = 2 + Math.floor(rng() * 3) // 2-4 layers
+  const allNodes: RuinExplorationNode[] = []
+  const allEdges: RuinExplorationEdge[] = []
+  const obstacleTypes: RuinObstacleType[] = ['formation', 'poison', 'sword']
+
+  let nodeIndex = 0
+
+  for (let layer = 0; layer < layerCount; layer += 1) {
+    const nodeCount = 2 + Math.floor(rng() * 2) // 2-3 nodes per layer
+    for (let pos = 0; pos < nodeCount; pos += 1) {
+      const obstacle = rng() < 0.2 ? 'none' : obstacleTypes[Math.floor(rng() * obstacleTypes.length)]
+      const node: RuinExplorationNode = {
+        id: `ruin-node-${nodeIndex}`,
+        layer,
+        position: pos,
+        obstacle,
+        difficulty: 1 + Math.floor(rng() * 5), // 1-5
+      }
+      allNodes.push(node)
+      nodeIndex += 1
+    }
+  }
+
+  // Connect layers: each node in layer N connects to 1-2 random nodes in layer N+1
+  const nodesByLayer: RuinExplorationNode[][] = []
+  for (let layer = 0; layer < layerCount; layer += 1) {
+    nodesByLayer.push(allNodes.filter((n) => n.layer === layer))
+  }
+
+  for (let layer = 0; layer < layerCount - 1; layer += 1) {
+    const currentLayer = nodesByLayer[layer]
+    const nextLayer = nodesByLayer[layer + 1]
+    const shuffledNext = [...nextLayer].sort(() => rng() - 0.5)
+
+    currentLayer.forEach((fromNode, index) => {
+      const connections = shuffledNext.slice(index % shuffledNext.length, (index % shuffledNext.length) + 1 + Math.floor(rng() * 2))
+      connections.forEach((toNode) => {
+        if (!allEdges.some((e) => e.fromId === fromNode.id && e.toId === toNode.id)) {
+          allEdges.push({ fromId: fromNode.id, toId: toNode.id })
+        }
+      })
+    })
+
+    // Ensure every node in next layer has at least one incoming connection
+    nextLayer.forEach((toNode) => {
+      if (!allEdges.some((e) => e.toId === toNode.id)) {
+        const fromNode = currentLayer[Math.floor(rng() * currentLayer.length)]
+        allEdges.push({ fromId: fromNode.id, toId: toNode.id })
+      }
+    })
+  }
+
+  return {
+    nodes: allNodes,
+    edges: allEdges,
+    currentPos: 'entrance',
+    attemptActive: false,
+    completed: false,
+    revealed: [],
+    passed: [],
+  }
+}
+
+export function ensureRuinExploration(session: GameSession, nodeId: string) {
+  const node = getNode(session, nodeId)
+  if (!node || node.type !== 'ruin') return
+  if (!node.ruinExploration) {
+    const rng = ruinRng(session, nodeId)
+    node.ruinExploration = generateRuinExploration(rng)
+  }
+}
+
+function getReachableFromPos(ruin: RuinExplorationState) {
+  if (ruin.currentPos === 'entrance') {
+    // All nodes in layer 0 that haven't been passed
+    return ruin.nodes.filter((n) => n.layer === 0 && !ruin.passed!.includes(n.id))
+  }
+  if (ruin.currentPos === 'destination') return []
+  // From a node, get nodes in next layer connected by edges
+  const nextNodeIds = ruin.edges
+    .filter((e) => e.fromId === ruin.currentPos)
+    .map((e) => e.toId)
+  return ruin.nodes.filter((n) => nextNodeIds.includes(n.id) && !ruin.passed!.includes(n.id))
+}
+
+export function startRuinAttempt(session: GameSession) {
+  const next = cloneSession(session)
+  const node = getCurrentNode(next)
+  ensureRuinExploration(next, node.id)
+  if (!node.ruinExploration || node.ruinExploration.completed) return next
+  node.ruinExploration.attemptActive = true
+  node.ruinExploration.currentPos = 'entrance'
+  node.ruinExploration.passed = node.ruinExploration.passed ?? []
+  node.ruinExploration.pendingNodeId = undefined
+  addLog(next, `你在 ${node.name} 深处发现了一条密道，决定一探究竟。`)
+  return next
+}
+
+export function getRuinReachableNodes(session: GameSession) {
+  const node = getCurrentNode(session)
+  if (!node.ruinExploration || !node.ruinExploration.attemptActive) return []
+  return getReachableFromPos(node.ruinExploration)
+}
+
+export function advanceRuinToNode(session: GameSession, targetNodeId: string) {
+  const next = cloneSession(session)
+  const node = getCurrentNode(next)
+  if (!node.ruinExploration || !node.ruinExploration.attemptActive) return next
+  const ruin = node.ruinExploration
+
+  // Validate target is reachable
+  const reachable = getReachableFromPos(ruin)
+  if (!reachable.some((n) => n.id === targetNodeId)) return next
+
+  const target = ruin.nodes.find((n) => n.id === targetNodeId)
+  if (!target) return next
+
+  // Move to target, reveal it
+  ruin.currentPos = targetNodeId
+  if (!ruin.revealed.includes(targetNodeId)) {
+    ruin.revealed = [...ruin.revealed, targetNodeId]
+  }
+  ruin.passed = ruin.passed ?? []
+
+  if (target.obstacle === 'none') {
+    // Free passage - auto-pass
+    ruin.passed = [...ruin.passed, targetNodeId]
+    ruin.pendingNodeId = undefined
+    // Check if they reached destination (no more reachable nodes = last layer)
+    const nextReachable = getReachableFromPos(ruin)
+    if (nextReachable.length === 0) {
+      ruin.currentPos = 'destination'
+      ruin.attemptActive = false
+      ruin.completed = true
+      node.reputation = Math.min(200, node.reputation + 100)
+      addLog(next, `你顺利通过了 ${node.name} 的密道，抵达终点！声望 +100。`)
+      awardRuinRelic(next, node)
+    }
+  } else {
+    // Needs resolution
+    ruin.pendingNodeId = targetNodeId
+  }
+
+  return next
+}
+
+export function resolveRuinWithItem(session: GameSession) {
+  const next = cloneSession(session)
+  const node = getCurrentNode(next)
+  const ruin = node.ruinExploration
+  if (!ruin || !ruin.pendingNodeId) return next
+  const pendingNode = ruin.nodes.find((n) => n.id === ruin.pendingNodeId)
+  if (!pendingNode) return next
+
+  const neededItemName = obstacleToItemMap[pendingNode.obstacle]
+  const itemsNeeded = Math.max(1, Math.ceil(pendingNode.difficulty / 2))
+  const existing = next.player.items.find((item) => item.name === neededItemName)
+
+  if (!existing || existing.count < itemsNeeded) return next
+
+  existing.count -= itemsNeeded
+  if (existing.count <= 0) {
+    next.player.items = next.player.items.filter((item) => item.id !== existing.id)
+  }
+
+  ruin.passed = [...(ruin.passed ?? []), pendingNode.id]
+  ruin.pendingNodeId = undefined
+
+  const nextReachable = getReachableFromPos(ruin)
+  if (nextReachable.length === 0) {
+    ruin.currentPos = 'destination'
+    ruin.attemptActive = false
+    ruin.completed = true
+    node.reputation = Math.min(200, node.reputation + 100)
+    addLog(next, `你使用 ${itemsNeeded} 枚${neededItemName}破除了${obstacleLabelMap[pendingNode.obstacle]}，抵达 ${node.name} 秘境深处！声望 +100。`)
+    awardRuinRelic(next, node)
+  } else {
+    addLog(next, `你使用 ${itemsNeeded} 枚${neededItemName}破除了前方的${obstacleLabelMap[pendingNode.obstacle]}，继续前进。`)
+  }
+
+  return next
+}
+
+export function resolveRuinForce(session: GameSession) {
+  const next = cloneSession(session)
+  const node = getCurrentNode(next)
+  const ruin = node.ruinExploration
+  if (!ruin || !ruin.pendingNodeId) return next
+  const pendingNode = ruin.nodes.find((n) => n.id === ruin.pendingNodeId)
+  if (!pendingNode) return next
+
+  const crewLoss = pendingNode.difficulty * 3 + 2
+  next.player.airshipCrew = Math.max(0, next.player.airshipCrew - crewLoss)
+
+  if (next.player.airshipCrew <= 0) {
+    // All crew dead - exploration fails
+    ruin.pendingNodeId = undefined
+    ruin.currentPos = 'entrance'
+    ruin.attemptActive = false
+    addLog(next, `强行突破${obstacleLabelMap[pendingNode.obstacle]}时损失惨重，所有船员折损，探索失败！`)
+    return next
+  }
+
+  ruin.passed = [...(ruin.passed ?? []), pendingNode.id]
+  ruin.pendingNodeId = undefined
+
+  const nextReachable = getReachableFromPos(ruin)
+  if (nextReachable.length === 0) {
+    ruin.currentPos = 'destination'
+    ruin.attemptActive = false
+    ruin.completed = true
+    node.reputation = Math.min(200, node.reputation + 100)
+    addLog(next, `你强行突破了${obstacleLabelMap[pendingNode.obstacle]}，付出 ${crewLoss} 名船员的代价抵达终点！声望 +100。`)
+    awardRuinRelic(next, node)
+  } else {
+    addLog(next, `你强行突破了${obstacleLabelMap[pendingNode.obstacle]}，损失 ${crewLoss} 名船员，继续前进。`)
+  }
+
+  return next
+}
+
+export function resolveRuinRetreat(session: GameSession) {
+  const next = cloneSession(session)
+  const node = getCurrentNode(next)
+  const ruin = node.ruinExploration
+  if (!ruin || !ruin.pendingNodeId) return next
+
+  ruin.pendingNodeId = undefined
+  ruin.currentPos = 'entrance'
+  addLog(next, `你决定放弃此行，退回 ${node.name} 入口。`)
+  return next
+}
+
+function awardRuinRelic(session: GameSession, node: NodeState) {
+  if (!node.ruinExploration?.relicId) return
+  const relic = session.world.relics.find((r) => r.id === node.ruinExploration!.relicId)
+  if (!relic) return
+  const existing = session.player.items.find((i) => i.data?.relicId === relic.id)
+  if (existing) return // already have it
+
+  const item: PlayerItem = {
+    id: `relic-item-${relic.id}`,
+    name: relic.name,
+    stackable: false,
+    count: 1,
+    data: { relicId: relic.id },
+  }
+  session.player.items.push(item)
+  addLog(session, `你在遗迹深处发现了「${relic.name}」！这是 ${relic.sourceSectName} 遗失之物。`)
+}
+
+export function getRuinPendingEncounter(session: GameSession) {
+  const node = getCurrentNode(session)
+  if (!node.ruinExploration || !node.ruinExploration.pendingNodeId) return null
+  const pendingNode = node.ruinExploration.nodes.find((n) => n.id === node.ruinExploration.pendingNodeId)
+  if (!pendingNode) return null
+  return {
+    obstacle: pendingNode.obstacle,
+    difficulty: pendingNode.difficulty,
+    obstacleLabel: obstacleLabelMap[pendingNode.obstacle] ?? pendingNode.obstacle,
+    neededItemName: obstacleToItemMap[pendingNode.obstacle] ?? '',
+    itemsNeeded: Math.max(1, Math.ceil(pendingNode.difficulty / 2)),
+    crewLoss: pendingNode.difficulty * 3 + 2,
+  }
 }

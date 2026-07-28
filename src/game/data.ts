@@ -132,9 +132,37 @@ export const itemDefinitions: { id: string; name: string; stackable: boolean }[]
   { id: 'treasure-yujinglian', name: '玉晶莲', stackable: true },
   { id: 'treasure-xingchenye', name: '星辰叶', stackable: true },
   { id: 'treasure-huntai', name: '混元胎', stackable: false },
+  { id: 'item-golden-armor', name: '金甲符', stackable: true },
+  { id: 'item-poison-pill', name: '避毒丹', stackable: true },
+  { id: 'item-formation-pearl', name: '破阵珠', stackable: true },
 ]
 
 export const itemNameMap = Object.fromEntries(itemDefinitions.map((item) => [item.id, item.name]))
+
+export const sectItemMap: Record<string, { itemId: string; price: number }> = {
+  talisman: { itemId: 'item-golden-armor', price: 80 },
+  elixir: { itemId: 'item-poison-pill', price: 80 },
+  equipment: { itemId: 'item-formation-pearl', price: 80 },
+}
+
+export const itemObstacleMap: Record<string, string> = {
+  'item-golden-armor': 'sword',
+  'item-poison-pill': 'poison',
+  'item-formation-pearl': 'formation',
+}
+
+export const obstacleToItemMap: Record<string, string> = {
+  sword: '金甲符',
+  poison: '避毒丹',
+  formation: '破阵珠',
+}
+
+export const obstacleLabelMap: Record<string, string> = {
+  formation: '阵法',
+  poison: '毒气',
+  sword: '剑气',
+  none: '无障碍',
+}
 
 export function getRandomNpcName(rng: () => number) {
   return questNpcNames[Math.floor(rng() * questNpcNames.length)]

@@ -4,6 +4,8 @@ export type ProductCategory = 'herb' | 'ore' | 'pelt' | 'essence' | 'talisman' |
 export type Realm = 'qi' | 'foundation' | 'golden' | 'nascent'
 export type BuildingType = 'hub' | 'alchemy' | 'forge' | 'sigil' | 'auction'
 export type RetainerStatus = 'idle' | 'busy' | 'trade'
+export type RuinObstacleType = 'formation' | 'poison' | 'sword' | 'none'
+export type SectSaleItem = 'item-golden-armor' | 'item-poison-pill' | 'item-formation-pearl'
 export type TurnPlanType = 'travel' | 'retainer' | 'repair-gate' | 'building'
 
 export interface ProductDefinition {
@@ -24,6 +26,31 @@ export interface MarketModifierState {
   categories: Record<ProductCategory, number>
 }
 
+export interface RuinExplorationNode {
+  id: string
+  layer: number
+  position: number
+  obstacle: RuinObstacleType
+  difficulty: number
+}
+
+export interface RuinExplorationEdge {
+  fromId: string
+  toId: string
+}
+
+export interface RuinExplorationState {
+  nodes: RuinExplorationNode[]
+  edges: RuinExplorationEdge[]
+  currentPos: 'entrance' | string | 'destination'
+  attemptActive: boolean
+  completed: boolean
+  revealed: string[]
+  passed: string[]
+  pendingNodeId?: string
+  relicId?: string
+}
+
 export interface NodeState {
   id: string
   name: string
@@ -38,6 +65,7 @@ export interface NodeState {
   market: MarketModifierState
   branchId?: string
   reputation: number
+  ruinExploration?: RuinExplorationState
 }
 
 export interface EdgeState {
@@ -56,7 +84,7 @@ export interface CargoItem {
   cost: number
 }
 
-export type QuestType = 'purchase' | 'deliver' | 'trade'
+export type QuestType = 'purchase' | 'deliver' | 'trade' | 'relic'
 
 export interface PlayerItem {
   id: string
@@ -64,6 +92,16 @@ export interface PlayerItem {
   stackable: boolean
   count: number
   data?: Record<string, string>
+}
+
+export interface LostRelic {
+  id: string
+  name: string
+  sourceSectId: string
+  sourceSectName: string
+  hiddenRuinId: string
+  rewardSpiritStone: number
+  rewardReputation: number
 }
 
 export interface QuestState {
@@ -84,6 +122,7 @@ export interface QuestState {
   tradeAction?: 'buy' | 'sell'
   minReputation?: number
   difficulty: number
+  relicId?: string
 }
 
 export interface BuildingState {
@@ -127,7 +166,6 @@ export interface PlayerState {
   cargoCapacity: number
   cargo: CargoItem[]
   items: PlayerItem[]
-  tradeLinkCapacity: number
   retainerCapacity: number
   airshipDurability: number
   airshipMaxDurability: number
@@ -142,7 +180,7 @@ export interface GuildState {
   tradeLinks: TradeLinkState[]
   retainers: RetainerState[]
   quests: QuestState[]
-  reputation: number
+  reputation: number  // TODO: 预留字段，后续会接入声望系统
 }
 
 export interface WorldState {
@@ -154,12 +192,14 @@ export interface WorldState {
   selectedNodeId: string
   pendingPlan?: TurnPlanState
   pendingEvent?: PendingEvent
+  pendingBattleEventId?: string  // start_combat 效果触发时记录事件 ID，用于战斗结束后的 battle_end hook
   generatedEvents: StoryEvent[]
   logs: string[]
   finalObjectiveUnlocked: boolean
   finalObjectiveCompleted: boolean
-  lastMoveRangeUpgradeUnlocked: boolean
+  lastMoveRangeUpgradeUnlocked: boolean  // TODO: 暂无解锁途径，后续会加
   ending?: EndingState
+  relics: LostRelic[]
 }
 
 export interface EndingState {
@@ -191,7 +231,6 @@ export interface ProgressConfig {
   initialMoveRange: number
   initialSpiritStone: number
   cargoCapacity: number
-  startingTradeLinkCapacity: number
   startingRetainerCapacity: number
   finalObjectiveProsperityThreshold: number
 }

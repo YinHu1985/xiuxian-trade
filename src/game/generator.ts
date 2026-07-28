@@ -1,17 +1,23 @@
 import { defaultConfig } from '@/game/config'
 import { allCategories, craftedCategories, getProductsForNodeType, productMap, rawMaterialCategories } from '@/game/data'
 import type {
+  BranchState,
+  BuildingState,
   CargoItem,
   EdgeState,
   GameConfig,
   GameSession,
   GuildState,
+  InventoryEntry,
+  LostRelic,
   MarketModifierState,
   NodeState,
   NodeType,
   PlayerItem,
   PlayerState,
   QuestState,
+  RetainerState,
+  TradeLinkState,
 } from '@/game/types'
 
 function createRng(seed: number) {
@@ -228,6 +234,7 @@ function pickSpecialtyProducts(nodeType: NodeType, rng: () => number) {
     return candidates.slice(0, amount).map((item) => item.id)
   }
 
+  // TODO: 非城镇据点的特产层次感不足，sect/ruin 仅有 1 种且与 town 的高阶产物重叠，后续需调整 realm 分配逻辑
   if (nodeType === 'sect') {
     return pickFromPool(craftedCategories, 1, 4)
   }
@@ -453,8 +460,11 @@ export function createNewGame(config: GameConfig = defaultConfig, seed = Date.no
     moveRange: config.progress.initialMoveRange,
     cargoCapacity: config.progress.cargoCapacity,
     cargo: [] as CargoItem[],
-    items: [] as PlayerItem[],
-    tradeLinkCapacity: config.progress.startingTradeLinkCapacity,
+    items: [
+      { id: 'item-golden-armor-start', name: '金甲符', stackable: true, count: 3 },
+      { id: 'item-poison-pill-start', name: '避毒丹', stackable: true, count: 3 },
+      { id: 'item-formation-pearl-start', name: '破阵珠', stackable: true, count: 3 },
+    ] as PlayerItem[],
     retainerCapacity: config.progress.startingRetainerCapacity,
     airshipDurability: 100,
     airshipMaxDurability: 100,
@@ -495,9 +505,143 @@ export function createNewGame(config: GameConfig = defaultConfig, seed = Date.no
       finalObjectiveUnlocked: false,
       finalObjectiveCompleted: false,
       lastMoveRangeUpgradeUnlocked: false,
+      relics: [],
     },
     storyFlags: {},
   }
 
+  generateRelics(session)
   return session
+}
+
+const relicSuffixes = ['镇门之宝', '传世法宝', '护宗秘宝', '开派遗宝', '历代传承', '祖师遗物']
+
+function seededShuffle<T>(arr: T[], seed: number): T[] {
+  let value = Math.abs(seed) % 2147483647
+  if (value <= 0) value += 2147483646
+  const result = [...arr]
+  for (let i = result.length - 1; i > 0; i -= 1) {
+    value = (value * 16807) % 2147483647
+    const j = Math.floor(((value - 1) / 2147483646) * (i + 1))
+    ;[result[i], result[j]] = [result[j], result[i]]
+  }
+  return result
+}
+
+function generateRelics(session: GameSession) {
+  const sects = session.world.nodes.filter((n) => n.type === 'sect')
+  const ruins = session.world.nodes.filter((n) => n.type === 'ruin')
+  if (sects.length === 0 || ruins.length === 0) return
+
+  const rng = seededShuffle(sects, session.world.seed + 9999)
+  const count = Math.min(3, rng.length, ruins.length)
+  const pickedSects = rng.slice(0, count)
+  const shuffledRuins = seededShuffle(ruins, session.world.seed + 8888)
+
+  const usedSuffixes = seededShuffle(relicSuffixes, session.world.seed + 7777)
+
+  pickedSects.forEach((sect, index) => {
+    const ruin = shuffledRuins[index % shuffledRuins.length]
+    const suffix = usedSuffixes[index % usedSuffixes.length]
+    const relicId = `relic-${sect.id}-${index}`
+    const relicName = `${sect.name}${suffix}`
+    const rewardSs = 600 + Math.floor(Math.random() * 400) // 600-999
+    const rewardRep = 30 + Math.floor(Math.random() * 20) // 30-49
+
+    const relic: LostRelic = {
+      id: relicId,
+      name: relicName,
+      sourceSectId: sect.id,
+      sourceSectName: sect.name,
+      hiddenRuinId: ruin.id,
+      rewardSpiritStone: rewardSs,
+      rewardReputation: rewardRep,
+    }
+    session.world.relics.push(relic)
+
+    // Place relic in the ruin's exploration
+    ensureNodeRuinExploration(ruin, session)
+    if (ruin.ruinExploration) {
+      ruin.ruinExploration.relicId = relicId
+    }
+
+    // Create quest on the sect
+    const quest: QuestState = {
+      id: `quest-${relicId}`,
+      type: 'relic',
+      nodeId: sect.id,
+      npcName: `宗门长老`,
+      title: `寻回${suffix}`,
+      intro: `本门镇宗之宝「${relicName}」在一次意外中遗失于一处遗迹深处。\n若能代为寻回，本门必有重谢。`,
+      acceptPrompt: '接下委托，前往遗迹寻回法宝',
+      completePrompt: `将「${relicName}」归还宗门`,
+      reward: rewardSs,
+      status: 'available',
+      difficulty: 3,
+      relicId,
+    }
+    session.guild.quests.push(quest)
+  })
+}
+
+function ensureNodeRuinExploration(node: NodeState, session: GameSession) {
+  if (node.type !== 'ruin' || node.ruinExploration) return
+  // Seed-based generation matching engine.ts ruinRng
+  const seedStr = `${session.world.seed}-${node.id}`
+  let value = seedStr.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 2147483647
+  if (value <= 0) value += 2147483646
+  const rng = () => {
+    value = (value * 16807) % 2147483647
+    return (value - 1) / 2147483646
+  }
+  const layerCount = 2 + Math.floor(rng() * 3)
+  const allNodes: import('@/game/types').RuinExplorationNode[] = []
+  const allEdges: import('@/game/types').RuinExplorationEdge[] = []
+  const obstacleTypes: import('@/game/types').RuinObstacleType[] = ['formation', 'poison', 'sword']
+  let nodeIndex = 0
+  for (let layer = 0; layer < layerCount; layer += 1) {
+    const nodeCount = 2 + Math.floor(rng() * 2)
+    for (let pos = 0; pos < nodeCount; pos += 1) {
+      allNodes.push({
+        id: `ruin-node-${nodeIndex}`,
+        layer,
+        position: pos,
+        obstacle: rng() < 0.2 ? 'none' : obstacleTypes[Math.floor(rng() * obstacleTypes.length)],
+        difficulty: 1 + Math.floor(rng() * 5),
+      })
+      nodeIndex += 1
+    }
+  }
+  const nodesByLayer: (typeof allNodes)[] = []
+  for (let layer = 0; layer < layerCount; layer += 1) {
+    nodesByLayer.push(allNodes.filter((n) => n.layer === layer))
+  }
+  for (let layer = 0; layer < layerCount - 1; layer += 1) {
+    const currentLayer = nodesByLayer[layer]
+    const nextLayer = nodesByLayer[layer + 1]
+    const shuffledNext = [...nextLayer].sort(() => rng() - 0.5)
+    currentLayer.forEach((fromNode, idx) => {
+      const connections = shuffledNext.slice(idx % shuffledNext.length, (idx % shuffledNext.length) + 1 + Math.floor(rng() * 2))
+      connections.forEach((toNode) => {
+        if (!allEdges.some((e) => e.fromId === fromNode.id && e.toId === toNode.id)) {
+          allEdges.push({ fromId: fromNode.id, toId: toNode.id })
+        }
+      })
+    })
+    nextLayer.forEach((toNode) => {
+      if (!allEdges.some((e) => e.toId === toNode.id)) {
+        const fromNode = currentLayer[Math.floor(rng() * currentLayer.length)]
+        allEdges.push({ fromId: fromNode.id, toId: toNode.id })
+      }
+    })
+  }
+  node.ruinExploration = {
+    nodes: allNodes,
+    edges: allEdges,
+    currentPos: 'entrance',
+    attemptActive: false,
+    completed: false,
+    revealed: [],
+    passed: [],
+  }
 }

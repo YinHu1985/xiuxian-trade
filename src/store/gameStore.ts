@@ -23,6 +23,12 @@ import {
   sellCargo,
   tavernRumor,
   buyProduct,
+  buySectItem,
+  startRuinAttempt,
+  advanceRuinToNode,
+  resolveRuinWithItem,
+  resolveRuinForce,
+  resolveRuinRetreat,
 } from '@/game/engine'
 import { createNewGame } from '@/game/generator'
 import { deleteSave, importSaveJson, listSaves, loadSave, saveGame } from '@/game/save'
@@ -56,6 +62,12 @@ interface GameStore {
   executePendingPlan: () => void
   acceptQuest: (questId: string) => void
   completeQuest: (questId: string) => void
+  buySectItem: () => void
+  startRuinAttempt: () => void
+  advanceRuinToNode: (nodeId: string) => void
+  resolveRuinWithItem: () => void
+  resolveRuinForce: () => void
+  resolveRuinRetreat: () => void
   saveCurrent: (title: string, existingId?: string) => void
   loadSaveById: (id: string) => void
   deleteSaveById: (id: string) => void
@@ -103,6 +115,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
   executePendingPlan: () => set((state) => ({ session: state.session ? executePendingPlan(state.session) : null })),
   acceptQuest: (questId) => set((state) => ({ session: state.session ? acceptQuest(state.session, questId) : null })),
   completeQuest: (questId) => set((state) => ({ session: state.session ? completeQuest(state.session, questId) : null })),
+  buySectItem: () => set((state) => ({ session: state.session ? buySectItem(state.session) : null })),
+  startRuinAttempt: () => set((state) => ({ session: state.session ? startRuinAttempt(state.session) : null })),
+  advanceRuinToNode: (nodeId) => set((state) => ({ session: state.session ? advanceRuinToNode(state.session, nodeId) : null })),
+  resolveRuinWithItem: () => set((state) => ({ session: state.session ? resolveRuinWithItem(state.session) : null })),
+  resolveRuinForce: () => set((state) => ({ session: state.session ? resolveRuinForce(state.session) : null })),
+  resolveRuinRetreat: () => set((state) => ({ session: state.session ? resolveRuinRetreat(state.session) : null })),
   saveCurrent: (title, existingId) => {
     const { session } = get()
     if (!session) return

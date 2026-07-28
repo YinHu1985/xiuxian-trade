@@ -40,6 +40,7 @@ export interface BattleState {
   logs: BattleLogEntry[]
   playerInitialCrew: number
   shipInitialDurability: number
+  battleEventId?: string // 由事件触发时记录事件 ID，战斗结束后触发 battle_end check
 }
 
 /** 创建一格空位 */
@@ -178,7 +179,7 @@ export function checkBattleEnd(
 }
 
 /** 初始化战斗状态 */
-export function createBattleState(airshipDurability: number): BattleState {
+export function createBattleState(airshipDurability: number, options?: { eventId?: string }): BattleState {
   const playerSide = createPlayerSide(airshipDurability)
   const enemySide = createEnemySide()
 
@@ -191,6 +192,7 @@ export function createBattleState(airshipDurability: number): BattleState {
     logs: [],
     playerInitialCrew: 0,
     shipInitialDurability: airshipDurability,
+    battleEventId: options?.eventId,
   }
 }
 

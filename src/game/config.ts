@@ -16,9 +16,8 @@ export const defaultConfig: GameConfig = {
     initialMoveRange: 1,
     initialSpiritStone: 520,
     cargoCapacity: 2,
-    startingTradeLinkCapacity: 1,
     startingRetainerCapacity: 2,
-    finalObjectiveProsperityThreshold: 3,
+    finalObjectiveProsperityThreshold: 3,  // TODO: 终局尚未完整实现，名称和逻辑后续会统一重构
   },
   economy: {
     originDiscount: 0.5,
@@ -77,10 +76,7 @@ export const presetConfigs: Record<string, { label: string; overrides: Partial<G
         baseIncomePerProduct: 14,
         auctionBonus: 0.26,
       },
-      progress: {
-        ...defaultConfig.progress,
-        startingTradeLinkCapacity: 2,
-      },
+      /* progress 暂无可覆盖参数（startingTradeLinkCapacity 已移除） */
     },
   },
   tight: {
