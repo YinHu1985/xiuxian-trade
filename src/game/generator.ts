@@ -9,7 +9,6 @@ import type {
   GameSession,
   GuildState,
   InventoryEntry,
-  LostRelic,
   MarketModifierState,
   NodeState,
   NodeType,
@@ -505,16 +504,13 @@ export function createNewGame(config: GameConfig = defaultConfig, seed = Date.no
       finalObjectiveUnlocked: false,
       finalObjectiveCompleted: false,
       lastMoveRangeUpgradeUnlocked: false,
-      relics: [],
     },
     storyFlags: {},
   }
 
-  generateRelics(session)
+  generateRelicEvents(session)
   return session
 }
-
-const relicSuffixes = ['镇门之宝', '传世法宝', '护宗秘宝', '开派遗宝', '历代传承', '祖师遗物']
 
 function seededShuffle<T>(arr: T[], seed: number): T[] {
   let value = Math.abs(seed) % 2147483647
@@ -528,120 +524,92 @@ function seededShuffle<T>(arr: T[], seed: number): T[] {
   return result
 }
 
-function generateRelics(session: GameSession) {
+function generateRelicEvents(session: GameSession) {
   const sects = session.world.nodes.filter((n) => n.type === 'sect')
   const ruins = session.world.nodes.filter((n) => n.type === 'ruin')
-  if (sects.length === 0 || ruins.length === 0) return
+  if (sects.length === 0 || ruins.length === 0) {
+    console.log('[generateRelicEvents] 没有宗门或遗迹，跳过生成', { sects: sects.length, ruins: ruins.length })
+    return
+  }
 
-  const rng = seededShuffle(sects, session.world.seed + 9999)
-  const count = Math.min(3, rng.length, ruins.length)
-  const pickedSects = rng.slice(0, count)
+  const count = Math.min(3, sects.length, ruins.length)
+  const pickedSects = seededShuffle(sects, session.world.seed + 9999).slice(0, count)
   const shuffledRuins = seededShuffle(ruins, session.world.seed + 8888)
+  const suffixes = seededShuffle(
+    ['镇门之宝', '传世法宝', '护宗秘宝', '开派遗宝', '历代传承', '祖师遗物'],
+    session.world.seed + 7777,
+  )
 
-  const usedSuffixes = seededShuffle(relicSuffixes, session.world.seed + 7777)
+  const relicPairs: Array<{ ruinName: string; relicName: string; sectName: string; flagPrefix: string }> = []
 
   pickedSects.forEach((sect, index) => {
     const ruin = shuffledRuins[index % shuffledRuins.length]
-    const suffix = usedSuffixes[index % usedSuffixes.length]
-    const relicId = `relic-${sect.id}-${index}`
+    const suffix = suffixes[index % suffixes.length]
     const relicName = `${sect.name}${suffix}`
-    const rewardSs = 600 + Math.floor(Math.random() * 400) // 600-999
-    const rewardRep = 30 + Math.floor(Math.random() * 20) // 30-49
+    const rewardSs = 600 + Math.floor(Math.random() * 400)
+    const flagPrefix = `relic_${sect.id}`
 
-    const relic: LostRelic = {
-      id: relicId,
-      name: relicName,
-      sourceSectId: sect.id,
-      sourceSectName: sect.name,
-      hiddenRuinId: ruin.id,
-      rewardSpiritStone: rewardSs,
-      rewardReputation: rewardRep,
-    }
-    session.world.relics.push(relic)
+    // 在废墟上标记遗物数据，探索完成后发放
+    ruin.relicData = { itemName: relicName, flagPrefix }
+    relicPairs.push({ ruinName: ruin.name, relicName, sectName: sect.name, flagPrefix })
 
-    // Place relic in the ruin's exploration
-    ensureNodeRuinExploration(ruin, session)
-    if (ruin.ruinExploration) {
-      ruin.ruinExploration.relicId = relicId
-    }
-
-    // Create quest on the sect
-    const quest: QuestState = {
-      id: `quest-${relicId}`,
-      type: 'relic',
-      nodeId: sect.id,
-      npcName: `宗门长老`,
-      title: `寻回${suffix}`,
-      intro: `本门镇宗之宝「${relicName}」在一次意外中遗失于一处遗迹深处。\n若能代为寻回，本门必有重谢。`,
-      acceptPrompt: '接下委托，前往遗迹寻回法宝',
-      completePrompt: `将「${relicName}」归还宗门`,
-      reward: rewardSs,
-      status: 'available',
-      difficulty: 3,
-      relicId,
-    }
-    session.guild.quests.push(quest)
+    // 到宗门归还遗物事件
+    session.world.generatedEvents.push({
+      id: `${flagPrefix}_return`,
+      title: `归还遗物`,
+      trigger: 'arrive',
+      condition: {
+        nodeId: sect.id,
+        flagsRequired: [`${flagPrefix}_found`],
+        flagsBlocked: [`${flagPrefix}_returned`],
+      },
+      priority: 10,
+      repeatable: false,
+      flagOnStart: `${flagPrefix}_return_encountered`,
+      steps: [
+        {
+          mode: 'portrait-right',
+          speaker: '宗门长老',
+          characterName: '宗门长老',
+          content: `会长亲临，有失远迎。敢问何事劳烦大驾？`,
+        },
+        {
+          mode: 'portrait-left',
+          speaker: '会长',
+          content: `前些日子在${ruin.name}探查，发现了一件贵派古物，应当是贵派遗失之物，特来奉还。`,
+        },
+        {
+          mode: 'portrait-right',
+          speaker: '宗门长老',
+          content: `（接过法器，双手微颤）这……这是我派遗失多年的${suffix}！会长大恩，本门铭记于心！`,
+        },
+        {
+          mode: 'portrait-left',
+          speaker: '会长',
+          content: `物归原主，不必言谢。`,
+          effects: [
+            { type: 'remove_item', itemName: relicName },
+            { type: 'add_spirit_stone', amount: rewardSs },
+            { type: 'set_flag', flag: `${flagPrefix}_returned` },
+          ],
+        },
+      ],
+      onComplete: [],
+    })
   })
-}
 
-function ensureNodeRuinExploration(node: NodeState, session: GameSession) {
-  if (node.type !== 'ruin' || node.ruinExploration) return
-  // Seed-based generation matching engine.ts ruinRng
-  const seedStr = `${session.world.seed}-${node.id}`
-  let value = seedStr.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 2147483647
-  if (value <= 0) value += 2147483646
-  const rng = () => {
-    value = (value * 16807) % 2147483647
-    return (value - 1) / 2147483646
-  }
-  const layerCount = 2 + Math.floor(rng() * 3)
-  const allNodes: import('@/game/types').RuinExplorationNode[] = []
-  const allEdges: import('@/game/types').RuinExplorationEdge[] = []
-  const obstacleTypes: import('@/game/types').RuinObstacleType[] = ['formation', 'poison', 'sword']
-  let nodeIndex = 0
-  for (let layer = 0; layer < layerCount; layer += 1) {
-    const nodeCount = 2 + Math.floor(rng() * 2)
-    for (let pos = 0; pos < nodeCount; pos += 1) {
-      allNodes.push({
-        id: `ruin-node-${nodeIndex}`,
-        layer,
-        position: pos,
-        obstacle: rng() < 0.2 ? 'none' : obstacleTypes[Math.floor(rng() * obstacleTypes.length)],
-        difficulty: 1 + Math.floor(rng() * 5),
-      })
-      nodeIndex += 1
-    }
-  }
-  const nodesByLayer: (typeof allNodes)[] = []
-  for (let layer = 0; layer < layerCount; layer += 1) {
-    nodesByLayer.push(allNodes.filter((n) => n.layer === layer))
-  }
-  for (let layer = 0; layer < layerCount - 1; layer += 1) {
-    const currentLayer = nodesByLayer[layer]
-    const nextLayer = nodesByLayer[layer + 1]
-    const shuffledNext = [...nextLayer].sort(() => rng() - 0.5)
-    currentLayer.forEach((fromNode, idx) => {
-      const connections = shuffledNext.slice(idx % shuffledNext.length, (idx % shuffledNext.length) + 1 + Math.floor(rng() * 2))
-      connections.forEach((toNode) => {
-        if (!allEdges.some((e) => e.fromId === fromNode.id && e.toId === toNode.id)) {
-          allEdges.push({ fromId: fromNode.id, toId: toNode.id })
-        }
-      })
-    })
-    nextLayer.forEach((toNode) => {
-      if (!allEdges.some((e) => e.toId === toNode.id)) {
-        const fromNode = currentLayer[Math.floor(rng() * currentLayer.length)]
-        allEdges.push({ fromId: fromNode.id, toId: toNode.id })
-      }
-    })
-  }
-  node.ruinExploration = {
-    nodes: allNodes,
-    edges: allEdges,
-    currentPos: 'entrance',
-    attemptActive: false,
-    completed: false,
-    revealed: [],
-    passed: [],
-  }
+  // ── 控制台输出遗物清单 ──
+  console.log('%c═══ 本局遗物清单 ═══', 'font-size:14px;font-weight:bold;color:#f0c080')
+  relicPairs.forEach((pair, i) => {
+    console.log(
+      `  ${i + 1}. 探索「%c${pair.ruinName}%c」可获得「%c${pair.relicName}%c」，归还至「%c${pair.sectName}%c」领取奖励`,
+      'color:#8fdf8f;font-weight:bold',
+      '',
+      'color:#f0c080;font-weight:bold',
+      '',
+      'color:#8fc8f0;font-weight:bold',
+      '',
+    )
+  })
+  console.log('%c══════════════════', 'font-size:14px;font-weight:bold;color:#f0c080')
 }

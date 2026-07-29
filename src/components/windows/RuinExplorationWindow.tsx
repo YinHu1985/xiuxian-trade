@@ -1,6 +1,7 @@
 import { getCurrentNode, getRuinReachableNodes, getRuinPendingEncounter, getItemCount } from '@/game/engine'
 import { obstacleLabelMap } from '@/game/data'
 import { StatChip } from '@/components/ui'
+import { useGameStore } from '@/store/gameStore'
 import type { GameSession } from '@/game/types'
 
 // ── 布局常数 ──
@@ -33,6 +34,9 @@ export function RuinExplorationWindow({
   const ruin = currentNode.ruinExploration
   const pendingEncounter = getRuinPendingEncounter(session)
   const reachable = getRuinReachableNodes(session)
+
+  // ── 遗物发现弹窗（依赖引擎层瞬态标记 _pendingRelicPopup） ──
+  const pendingPopup = ruin?._pendingRelicPopup ?? undefined
 
   // ── 错误状态 ──
   if (currentNode.type !== 'ruin') {
@@ -142,7 +146,7 @@ export function RuinExplorationWindow({
   const destCY = canvasH / 2
 
   return (
-    <div className="flex h-full flex-col gap-4">
+    <div className="relative flex h-full flex-col gap-4">
       {/* 标题栏 */}
       <div className="rounded-[18px] border border-[#7a5a36]/58 bg-[linear-gradient(180deg,rgba(67,45,28,0.97),rgba(41,28,19,0.95))] p-4">
         <div className="flex items-start justify-between">
@@ -332,6 +336,38 @@ export function RuinExplorationWindow({
           </p>
         </div>
       )}
+
+      {/* ── 遗物发现弹窗（依赖引擎层 _pendingRelicPopup） ── */}
+      {pendingPopup ? (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="mx-4 w-full max-w-sm rounded-[18px] border border-yellow-400/50 bg-[linear-gradient(180deg,rgba(67,45,28,0.98),rgba(41,28,19,0.96))] p-6 text-center shadow-2xl">
+            {pendingPopup.isFirstTime ? (
+              <>
+                <p className="text-xs uppercase tracking-[0.3em] text-amber-100/40">秘境遗宝</p>
+                <h3 className="mt-4 font-serif text-2xl text-[#f0c080]">「{pendingPopup.relicName}」</h3>
+                <p className="mt-4 text-sm leading-7 text-[#ead8ba]">
+                  你在遗迹深处发现了一件古物，散发着淡淡的灵力波动。
+                  <br />
+                  这似乎是某个遗失已久的宝物。
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-xs uppercase tracking-[0.3em] text-amber-100/40">再次探秘</p>
+                <p className="mt-4 text-sm leading-7 text-[#ead8ba]">
+                  遗迹灵力已耗尽，未能发现新的宝物。
+                </p>
+              </>
+            )}
+            <button
+              className="action mt-6"
+              onClick={() => useGameStore.getState().clearRuinRelicPopup()}
+            >
+              确认
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

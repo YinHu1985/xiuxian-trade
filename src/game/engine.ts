@@ -997,22 +997,6 @@ export function completeQuest(session: GameSession, questId: string) {
     }
   }
 
-  // 法宝寻回任务：检查玩家是否有对应的遗失法宝，并移除
-  if (quest.type === 'relic' && quest.relicId) {
-    const relicIdx = next.player.items.findIndex((item) => item.data?.relicId === quest.relicId)
-    if (relicIdx === -1) return next
-    next.player.items.splice(relicIdx, 1)
-    next.player.spiritStone += quest.reward
-    // 加声望
-    const relic = next.world.relics.find((r) => r.id === quest.relicId)
-    if (relic) {
-      const relicNode = getNode(next, relic.sourceSectId)
-      if (relicNode) {
-        relicNode.reputation = Math.min(200, relicNode.reputation + relic.rewardReputation)
-      }
-    }
-  }
-
   quest.status = 'completed'
   addLog(next, `完成了「${quest.title}」，获得 ${quest.reward} 灵石的报酬。`)
 
@@ -1228,6 +1212,8 @@ export function ensureRuinExploration(session: GameSession, nodeId: string) {
     const rng = ruinRng(session, nodeId)
     node.ruinExploration = generateRuinExploration(rng)
   }
+  // 清除瞬态弹窗标记，确保重新开始探索时不会弹出旧弹窗
+  node.ruinExploration._pendingRelicPopup = null
 }
 
 function getReachableFromPos(ruin: RuinExplorationState) {
@@ -1295,6 +1281,12 @@ export function advanceRuinToNode(session: GameSession, targetNodeId: string) {
       node.reputation = Math.min(200, node.reputation + 100)
       addLog(next, `你顺利通过了 ${node.name} 的密道，抵达终点！声望 +100。`)
       awardRuinRelic(next, node)
+      if (node.relicData) {
+        ruin._pendingRelicPopup = {
+          relicName: node.relicData.itemName,
+          isFirstTime: !next.storyFlags[`${node.relicData.flagPrefix}_found`],
+        }
+      }
     }
   } else {
     // Needs resolution
@@ -1334,6 +1326,12 @@ export function resolveRuinWithItem(session: GameSession) {
     node.reputation = Math.min(200, node.reputation + 100)
     addLog(next, `你使用 ${itemsNeeded} 枚${neededItemName}破除了${obstacleLabelMap[pendingNode.obstacle]}，抵达 ${node.name} 秘境深处！声望 +100。`)
     awardRuinRelic(next, node)
+    if (node.relicData) {
+      ruin._pendingRelicPopup = {
+        relicName: node.relicData.itemName,
+        isFirstTime: !next.storyFlags[`${node.relicData.flagPrefix}_found`],
+      }
+    }
   } else {
     addLog(next, `你使用 ${itemsNeeded} 枚${neededItemName}破除了前方的${obstacleLabelMap[pendingNode.obstacle]}，继续前进。`)
   }
@@ -1372,6 +1370,12 @@ export function resolveRuinForce(session: GameSession) {
     node.reputation = Math.min(200, node.reputation + 100)
     addLog(next, `你强行突破了${obstacleLabelMap[pendingNode.obstacle]}，付出 ${crewLoss} 名船员的代价抵达终点！声望 +100。`)
     awardRuinRelic(next, node)
+    if (node.relicData) {
+      ruin._pendingRelicPopup = {
+        relicName: node.relicData.itemName,
+        isFirstTime: !next.storyFlags[`${node.relicData.flagPrefix}_found`],
+      }
+    }
   } else {
     addLog(next, `你强行突破了${obstacleLabelMap[pendingNode.obstacle]}，损失 ${crewLoss} 名船员，继续前进。`)
   }
@@ -1391,24 +1395,6 @@ export function resolveRuinRetreat(session: GameSession) {
   return next
 }
 
-function awardRuinRelic(session: GameSession, node: NodeState) {
-  if (!node.ruinExploration?.relicId) return
-  const relic = session.world.relics.find((r) => r.id === node.ruinExploration!.relicId)
-  if (!relic) return
-  const existing = session.player.items.find((i) => i.data?.relicId === relic.id)
-  if (existing) return // already have it
-
-  const item: PlayerItem = {
-    id: `relic-item-${relic.id}`,
-    name: relic.name,
-    stackable: false,
-    count: 1,
-    data: { relicId: relic.id },
-  }
-  session.player.items.push(item)
-  addLog(session, `你在遗迹深处发现了「${relic.name}」！这是 ${relic.sourceSectName} 遗失之物。`)
-}
-
 export function getRuinPendingEncounter(session: GameSession) {
   const node = getCurrentNode(session)
   if (!node.ruinExploration || !node.ruinExploration.pendingNodeId) return null
@@ -1422,4 +1408,24 @@ export function getRuinPendingEncounter(session: GameSession) {
     itemsNeeded: Math.max(1, Math.ceil(pendingNode.difficulty / 2)),
     crewLoss: pendingNode.difficulty * 3 + 2,
   }
+}
+
+function awardRuinRelic(session: GameSession, node: NodeState) {
+  if (!node.relicData) return
+  const { itemName, flagPrefix } = node.relicData
+  if (session.storyFlags[`${flagPrefix}_found`]) return
+
+  const existing = session.player.items.find((i) => i.name === itemName && i.stackable)
+  if (existing) {
+    existing.count += 1
+  } else {
+    session.player.items.push({
+      id: `relic-item-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name: itemName,
+      stackable: false,
+      count: 1,
+    })
+  }
+  session.storyFlags[`${flagPrefix}_found`] = true
+  addLog(session, `你在遗迹深处发现了「${itemName}」！这是 ${node.name} 中隐藏的遗宝。`)
 }

@@ -48,7 +48,8 @@ export interface RuinExplorationState {
   revealed: string[]
   passed: string[]
   pendingNodeId?: string
-  relicId?: string
+  /** 引擎层瞬态标记：本次探索刚完成时设置，用于 UI 弹出遗物提示 */
+  _pendingRelicPopup?: { relicName: string; isFirstTime: boolean } | null
 }
 
 export interface NodeState {
@@ -66,6 +67,7 @@ export interface NodeState {
   branchId?: string
   reputation: number
   ruinExploration?: RuinExplorationState
+  relicData?: { itemName: string; flagPrefix: string }
 }
 
 export interface EdgeState {
@@ -84,7 +86,7 @@ export interface CargoItem {
   cost: number
 }
 
-export type QuestType = 'purchase' | 'deliver' | 'trade' | 'relic'
+export type QuestType = 'purchase' | 'deliver' | 'trade'
 
 export interface PlayerItem {
   id: string
@@ -92,16 +94,6 @@ export interface PlayerItem {
   stackable: boolean
   count: number
   data?: Record<string, string>
-}
-
-export interface LostRelic {
-  id: string
-  name: string
-  sourceSectId: string
-  sourceSectName: string
-  hiddenRuinId: string
-  rewardSpiritStone: number
-  rewardReputation: number
 }
 
 export interface QuestState {
@@ -122,7 +114,6 @@ export interface QuestState {
   tradeAction?: 'buy' | 'sell'
   minReputation?: number
   difficulty: number
-  relicId?: string
 }
 
 export interface BuildingState {
@@ -199,7 +190,6 @@ export interface WorldState {
   finalObjectiveCompleted: boolean
   lastMoveRangeUpgradeUnlocked: boolean  // TODO: 暂无解锁途径，后续会加
   ending?: EndingState
-  relics: LostRelic[]
 }
 
 export interface EndingState {

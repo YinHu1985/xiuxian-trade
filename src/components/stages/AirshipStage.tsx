@@ -1,7 +1,154 @@
-import { useState } from 'react'
+import { useState, type JSX } from 'react'
 import { airshipBackgroundUrl } from '@/game/backgrounds'
 import { OverlayFrame, FloatingPanel, StatChip } from '@/components/ui'
 import type { GameSession } from '@/game/types'
+
+type CabinTab = 'items' | 'quests' | 'logs'
+
+function CaptainCabin({ session, onClose }: { session: GameSession; onClose: () => void }) {
+  const [activeTab, setActiveTab] = useState<CabinTab>('items')
+
+  const tabs: Array<{ key: CabinTab; label: string; count?: number }> = [
+    { key: 'items', label: '行囊' },
+    { key: 'quests', label: '任务', count: session.guild.quests.filter((q) => q.status === 'active').length },
+    { key: 'logs', label: '日志', count: session.world.logs.length },
+  ]
+
+  const tabContent: Record<CabinTab, JSX.Element> = {
+    items: (
+      <div className="grid gap-3">
+        {session.player.items.length > 0 ? (
+          session.player.items.map((item) => {
+            const isLetter = item.name === '信函'
+            return (
+              <div
+                key={item.id}
+                className="rounded-[14px] border border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(86,58,35,0.92),rgba(55,37,24,0.9))] px-4 py-3"
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-[#fff4dd]">
+                    {item.name}
+                    {item.count > 1 ? <span className="ml-2 text-xs text-[#cdb48a]">x{item.count}</span> : null}
+                  </p>
+                  {isLetter ? <span className="rounded-full border border-[#b88b54]/35 bg-[rgba(247,224,186,0.08)] px-3 py-0.5 text-xs text-[#f1dfbf]">函</span> : null}
+                </div>
+                {isLetter && item.data ? (
+                  <p className="mt-1 text-xs text-[#cdb48a]">
+                    送往：{item.data.targetNodeName ?? '未知'}
+                  </p>
+                ) : null}
+              </div>
+            )
+          })
+        ) : (
+          <div className="rounded-[14px] border border-dashed border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(72,48,30,0.84),rgba(46,31,21,0.8))] px-4 py-4 text-sm text-[#cdb48a]">
+            行囊空空。
+          </div>
+        )}
+      </div>
+    ),
+
+    quests: (() => {
+      const activeQuests = session.guild.quests.filter((q) => q.status === 'active')
+      if (activeQuests.length === 0) {
+        return (
+          <div className="rounded-[14px] border border-dashed border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(72,48,30,0.84),rgba(46,31,21,0.8))] px-4 py-4 text-sm text-[#cdb48a]">
+            当前没有进行中的委托。
+          </div>
+        )
+      }
+      return (
+        <div className="grid gap-3">
+          {activeQuests.map((quest) => {
+            const targetNode = quest.targetNodeId
+              ? session.world.nodes.find((n) => n.id === quest.targetNodeId)
+              : undefined
+            return (
+              <div
+                key={quest.id}
+                className="rounded-[14px] border border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(86,58,35,0.92),rgba(55,37,24,0.9))] px-4 py-3"
+              >
+                <p className="text-sm text-[#fff4dd]">{quest.title}</p>
+                <p className="mt-1 text-xs text-[#cdb48a]">
+                  委托人：{quest.npcName}
+                  {quest.type === 'deliver' && targetNode
+                    ? ` · 送往：${targetNode.name}`
+                    : quest.type === 'deliver'
+                      ? ' · 送信途中'
+                      : null}
+                  {quest.type === 'purchase' ? ` · 报酬：${quest.reward} 灵石` : null}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <span className="rounded-full border border-[#b88b54]/35 bg-[rgba(247,224,186,0.08)] px-2 py-0.5 text-xs text-[#f1dfbf]">
+                    {quest.type === 'purchase' ? '收购' : quest.type === 'deliver' ? '送信' : '交易'}
+                  </span>
+                  <span className="rounded-full border border-[#7b9b54]/35 bg-[rgba(186,247,155,0.08)] px-2 py-0.5 text-xs text-[#dff1bf]">
+                    进行中
+                  </span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )
+    })(),
+
+    logs: (
+      <div className="flex flex-col">
+        {session.world.logs.length > 0 ? (
+          session.world.logs.map((log, index) => (
+            <div
+              key={`${log}-${index}`}
+              className="border-t border-t-[#7b5b39]/20 px-4 py-1.5 text-xs text-[#ead8ba] first:border-t-0"
+            >
+              {log}
+            </div>
+          ))
+        ) : (
+          <div className="rounded-[14px] border border-dashed border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(72,48,30,0.84),rgba(46,31,21,0.8))] px-4 py-4 text-sm text-[#cdb48a]">
+            尚无日志记录。
+          </div>
+        )}
+      </div>
+    ),
+  }
+
+  return (
+    <OverlayFrame title="船长室" onClose={onClose}>
+      <div className="flex h-full flex-col">
+        {/* Tab bar */}
+        <div className="flex shrink-0 gap-0 border-b border-b-[#7b5b39]/42">
+          {tabs.map((tab) => {
+            const active = activeTab === tab.key
+            return (
+              <button
+                key={tab.key}
+                className={`relative px-5 py-3 text-sm transition-colors ${
+                  active
+                    ? 'text-[#f0c080] after:absolute after:bottom-0 after:left-0 after:h-[2px] after:w-full after:bg-[#f0c080]'
+                    : 'text-[#cdb48a]/60 hover:text-[#cdb48a]'
+                }`}
+                onClick={() => setActiveTab(tab.key)}
+              >
+                {tab.label}
+                {tab.count !== undefined && tab.count > 0 ? (
+                  <span className="ml-2 rounded-full bg-[#7b5b39]/50 px-2 py-0.5 text-xs text-[#cdb48a]">
+                    {tab.count}
+                  </span>
+                ) : null}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Content */}
+        <div className="mt-4 flex-1 overflow-y-auto">
+          {tabContent[activeTab]}
+        </div>
+      </div>
+    </OverlayFrame>
+  )
+}
 
 export function AirshipStage({
   session,
@@ -169,93 +316,7 @@ export function AirshipStage({
       ) : null}
 
       {showCaptainCabin ? (
-        <OverlayFrame title="船长室 · 行囊与任务" onClose={() => setShowCaptainCabin(false)}>
-          <div className="grid h-full grid-cols-2 gap-6">
-            <div className="overflow-y-auto rounded-[18px] border border-[#7a5a36]/58 bg-[linear-gradient(180deg,rgba(67,45,28,0.97),rgba(41,28,19,0.95))] p-6">
-              <p className="text-xs uppercase tracking-[0.3em] text-amber-100/40">随身物品</p>
-              <h3 className="mt-3 font-serif text-2xl text-[#fff4dd]">行囊</h3>
-              {session.player.items.length > 0 ? (
-                <div className="mt-4 grid gap-3">
-                  {session.player.items.map((item) => {
-                    const isLetter = item.name === '信函'
-                    return (
-                      <div
-                        key={item.id}
-                        className="rounded-[14px] border border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(86,58,35,0.92),rgba(55,37,24,0.9))] px-4 py-3"
-                      >
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm text-[#fff4dd]">
-                            {item.name}
-                            {item.count > 1 ? <span className="ml-2 text-xs text-[#cdb48a]">x{item.count}</span> : null}
-                          </p>
-                          {isLetter ? <span className="rounded-full border border-[#b88b54]/35 bg-[rgba(247,224,186,0.08)] px-3 py-0.5 text-xs text-[#f1dfbf]">函</span> : null}
-                        </div>
-                        {isLetter && item.data ? (
-                          <p className="mt-1 text-xs text-[#cdb48a]">
-                            送往：{item.data.targetNodeName ?? '未知'}
-                          </p>
-                        ) : null}
-                      </div>
-                    )
-                  })}
-                </div>
-              ) : (
-                <div className="mt-4 rounded-[14px] border border-dashed border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(72,48,30,0.84),rgba(46,31,21,0.8))] px-4 py-4 text-sm text-[#cdb48a]">
-                  行囊空空。
-                </div>
-              )}
-            </div>
-
-            <div className="overflow-y-auto rounded-[18px] border border-[#7a5a36]/58 bg-[linear-gradient(180deg,rgba(67,45,28,0.97),rgba(41,28,19,0.95))] p-6">
-              <p className="text-xs uppercase tracking-[0.3em] text-amber-100/40">委托登记簿</p>
-              <h3 className="mt-3 font-serif text-2xl text-[#fff4dd]">任务追踪</h3>
-              {(() => {
-                const activeQuests = session.guild.quests.filter((q) => q.status === 'active')
-                if (activeQuests.length === 0) {
-                  return (
-                    <div className="mt-4 rounded-[14px] border border-dashed border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(72,48,30,0.84),rgba(46,31,21,0.8))] px-4 py-4 text-sm text-[#cdb48a]">
-                      当前没有进行中的委托。
-                    </div>
-                  )
-                }
-                return (
-                  <div className="mt-4 grid gap-3">
-                    {activeQuests.map((quest) => {
-                      const targetNode = quest.targetNodeId
-                        ? session.world.nodes.find((n) => n.id === quest.targetNodeId)
-                        : undefined
-                      return (
-                        <div
-                          key={quest.id}
-                          className="rounded-[14px] border border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(86,58,35,0.92),rgba(55,37,24,0.9))] px-4 py-3"
-                        >
-                          <p className="text-sm text-[#fff4dd]">{quest.title}</p>
-                          <p className="mt-1 text-xs text-[#cdb48a]">
-                            委托人：{quest.npcName}
-                            {quest.type === 'deliver' && targetNode
-                              ? ` · 送往：${targetNode.name}`
-                              : quest.type === 'deliver'
-                                ? ' · 送信途中'
-                                : null}
-                            {quest.type === 'purchase' ? ` · 报酬：${quest.reward} 灵石` : null}
-                          </p>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <span className="rounded-full border border-[#b88b54]/35 bg-[rgba(247,224,186,0.08)] px-2 py-0.5 text-xs text-[#f1dfbf]">
-                              {quest.type === 'purchase' ? '收购' : quest.type === 'deliver' ? '送信' : '交易'}
-                            </span>
-                            <span className="rounded-full border border-[#7b9b54]/35 bg-[rgba(186,247,155,0.08)] px-2 py-0.5 text-xs text-[#dff1bf]">
-                              进行中
-                            </span>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )
-              })()}
-            </div>
-          </div>
-        </OverlayFrame>
+        <CaptainCabin session={session} onClose={() => setShowCaptainCabin(false)} />
       ) : null}
     </div>
   )

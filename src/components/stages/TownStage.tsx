@@ -63,7 +63,6 @@ export function TownStage({
 }) {
   const currentNode = getCurrentNode(session)
   const rumorVenue = getRumorVenueCopy(currentNode.type)
-  const recentLogs = session.world.logs.slice(0, 4)
   const backgroundUrl = getNodeBackgroundUrl(currentNode.type, currentNode.id, session.world.seed)
   const specialties = getTradableProducts(session, currentNode).map((productId) => productMap[productId]).filter(Boolean)
 
@@ -105,17 +104,7 @@ export function TownStage({
         </FloatingPanel>
       </div>
 
-      <div className="absolute bottom-5 left-5 w-80">
-        <FloatingPanel title="城中近况" subtitle="风闻与账册">
-          <div className="grid gap-2">
-            {(recentLogs.length ? recentLogs : ['今日城中一切如常，尚无新的可记之事。']).map((log, index) => (
-              <div key={`${log}-${index}`} className="rounded-[14px] border border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(86,58,35,0.92),rgba(55,37,24,0.9))] px-4 py-3 text-sm text-[#ead8ba]">
-                {log}
-              </div>
-            ))}
-          </div>
-        </FloatingPanel>
-      </div>
+
 
       <div className="absolute right-5 top-1/2 flex w-72 -translate-y-1/2 flex-col gap-3">
         <SceneAction title={rumorVenue.name} subtitle={rumorVenue.entrySubtitle} onClick={onOpenRumor} />

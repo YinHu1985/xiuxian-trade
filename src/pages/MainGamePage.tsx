@@ -102,10 +102,18 @@ const [dialogConfig, setDialogConfig] = useState<{
       setDialogConfig(buildDialogConfig(result.step, handleEventAdvance))
     } else {
       setDialogConfig(null)
-      const chainResult = checkEvents('init', useGameStore.getState().session!)
-      if (chainResult) {
-        loadSession(chainResult.session)
-        setDialogConfig(buildDialogConfig(chainResult.step, handleEventAdvance))
+      // 事件结束后链式检查：init → arrive（支持多层事件串联）
+      const updatedSession = useGameStore.getState().session!
+      const initResult = checkEvents('init', updatedSession)
+      if (initResult) {
+        loadSession(initResult.session)
+        setDialogConfig(buildDialogConfig(initResult.step, handleEventAdvance))
+      } else {
+        const arriveResult = checkEvents('arrive', updatedSession)
+        if (arriveResult) {
+          loadSession(arriveResult.session)
+          setDialogConfig(buildDialogConfig(arriveResult.step, handleEventAdvance))
+        }
       }
     }
   }
@@ -145,6 +153,23 @@ const [dialogConfig, setDialogConfig] = useState<{
       setDialogConfig(buildDialogConfig(result.step, handleEventAdvance))
     }
   }, [overlayWindow, session])
+
+  // ── 打开据点界面时检查 arrive 事件（返还遗物等） ──
+  // 不依赖 session，仅在用户主动切换界面或打开 overlay 时触发
+  useEffect(() => {
+    const s = useGameStore.getState().session
+    if (!s) return
+    const isVisitingSect = overlayWindow?.kind === 'sectVisit'
+    const isVisitingRuin = overlayWindow?.kind === 'ruinExplore'
+    if (!isVisitingSect && !isVisitingRuin && mainView !== 'town') return
+
+    const result = checkEvents('arrive', s)
+    if (result) {
+      loadSession(result.session)
+      setDialogConfig(buildDialogConfig(result.step, handleEventAdvance))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainView, overlayWindow])
 
   const stageStyle = useMemo(
     () => ({
@@ -231,6 +256,19 @@ const [dialogConfig, setDialogConfig] = useState<{
     executePendingPlan()
     await new Promise((resolve) => window.setTimeout(resolve, 620))
     setIsExecutingPlan(false)
+
+    // 旅行后检查 arrive 事件（保留为 fallback）
+    if (hadTravel) {
+      const currentSession = useGameStore.getState().session
+      if (currentSession) {
+        const eventResult = checkEvents('arrive', currentSession)
+        if (eventResult) {
+          loadSession(eventResult.session)
+          setDialogConfig(buildDialogConfig(eventResult.step, handleEventAdvance))
+          return // arrive 事件优先，跳过随机遭遇
+        }
+      }
+    }
 
     if (hadTravel && Math.random() < 0.5) {
       const encounter = generateRandomEncounter(session.player.airshipDurability)

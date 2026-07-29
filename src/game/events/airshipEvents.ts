@@ -7,9 +7,10 @@ export const airshipEvents: StoryEvent[] = [
   {
     id: 'intro_airship',
     title: '飞舟总览',
-    trigger: 'arrive',
+    trigger: 'action',
     condition: { flagsBlocked: ['intro_airship_done'] },
     priority: 50,
+    triggerFilter: { actionType: 'intro_manual' },
     repeatable: false,
     flagOnStart: 'intro_airship_started',
     steps: [

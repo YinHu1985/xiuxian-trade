@@ -7,9 +7,10 @@ export const ruinEvents: StoryEvent[] = [
   {
     id: 'intro_ruin',
     title: '遗迹探索指南',
-    trigger: 'arrive',
+    trigger: 'action',
     condition: { flagsBlocked: ['intro_ruin_done'] },
     priority: 50,
+    triggerFilter: { actionType: 'intro_manual' },
     repeatable: false,
     flagOnStart: 'intro_ruin_started',
     steps: [
@@ -18,14 +19,42 @@ export const ruinEvents: StoryEvent[] = [
         characterName: '会长助理',
         portraitUrl: characterPortraitUrl,
         content:
-          '前方似乎是一座上古遗迹。这类地方虽然破败，但深处往往藏着意想不到的机缘。\n\n据我所知，遗迹深处有一条密道，内里布满了层层禁制——剑气、毒气、阵法不一而足。若能穿越过去，必有收获。\n\n● 秘道是一张多层的路径图，每一层的节点通向下一层，抵达终点即为成功。\n● 每个节点都设有禁制（剑气/毒气/阵法），可用对应的金甲符、避毒丹、破阵珠化解。\n● 若没有对应物品，也可强行突破——但要付出船员伤亡的代价。\n● 觉得不妥就及时撤回入口，下次再来。\n\n我听说有些宗门遗失了镇宗之宝，似乎就藏在这种遗迹深处。若是能寻回，那些宗门定会出大价钱。',
+          '会长，前方是一座上古遗迹。\n这种地方虽然残破，但深处往往藏着意想不到的机缘。',
+      },
+      {
+        mode: 'portrait-left',
+        characterName: '会长',
+        portraitUrl: characterPortraitUrl,
+        content:
+          '看起来确实有些年头了。里面有什么？',
       },
       {
         mode: 'portrait-right',
         characterName: '会长助理',
         portraitUrl: characterPortraitUrl,
         content:
-          '对了，之前在那些宗门看到的秘制之物——金甲符、避毒丹、破阵珠——正是为了应对遗迹中的禁制而炼制的。\n\n看来这并非巧合。如果想深入探索，不妨先去相关宗门买些秘制之物备着。',
+          '据我打探到的情报，遗迹深处有一条密道，布满了禁制。\n剑气、毒气、阵法，不一而足。若能穿越过去，必有收获。\n我正好带了三种秘制之物——金甲符、避毒丹、破阵珠，\n专门应对这些禁制。',
+      },
+      {
+        mode: 'portrait-left',
+        characterName: '会长',
+        portraitUrl: characterPortraitUrl,
+        content:
+          '三种禁制……确实需要准备周全。\n那如果遇到麻烦，能撤回来吗？',
+      },
+      {
+        mode: 'portrait-right',
+        characterName: '会长助理',
+        portraitUrl: characterPortraitUrl,
+        content:
+          '随时可以撤回入口，不会有损失。\n不过要想清楚——没有对应物品的话，强行突破会付出船员的伤亡代价。\n我建议先备好物品再深入。',
+      },
+      {
+        mode: 'portrait-right',
+        characterName: '会长助理',
+        portraitUrl: characterPortraitUrl,
+        content:
+          '对了，我听说有些宗门遗失了镇宗之宝，就藏在这种遗迹深处。\n若是能寻回来，那些宗门定会出大价钱。',
       },
     ],
     onComplete: [{ type: 'set_flag', flag: 'intro_ruin_done' }],

@@ -68,6 +68,7 @@ interface GameStore {
   resolveRuinWithItem: () => void
   resolveRuinForce: () => void
   resolveRuinRetreat: () => void
+  clearRuinRelicPopup: () => void
   saveCurrent: (title: string, existingId?: string) => void
   loadSaveById: (id: string) => void
   deleteSaveById: (id: string) => void
@@ -121,6 +122,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
   resolveRuinWithItem: () => set((state) => ({ session: state.session ? resolveRuinWithItem(state.session) : null })),
   resolveRuinForce: () => set((state) => ({ session: state.session ? resolveRuinForce(state.session) : null })),
   resolveRuinRetreat: () => set((state) => ({ session: state.session ? resolveRuinRetreat(state.session) : null })),
+  clearRuinRelicPopup: () =>
+    set((state) => {
+      if (!state.session) return {}
+      const next = structuredClone(state.session)
+      const node = next.world.nodes.find((n) => n.type === 'ruin' && n.ruinExploration?._pendingRelicPopup)
+      if (node?.ruinExploration) node.ruinExploration._pendingRelicPopup = null
+      return { session: next }
+    }),
   saveCurrent: (title, existingId) => {
     const { session } = get()
     if (!session) return

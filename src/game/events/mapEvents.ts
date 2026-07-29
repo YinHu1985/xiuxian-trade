@@ -7,9 +7,10 @@ export const mapEvents: StoryEvent[] = [
   {
     id: 'intro_map',
     title: '大地图指南',
-    trigger: 'arrive',
+    trigger: 'action',
     condition: { flagsBlocked: ['intro_map_done'] },
     priority: 50,
+    triggerFilter: { actionType: 'intro_manual' },
     repeatable: false,
     flagOnStart: 'intro_map_started',
     steps: [
