@@ -7,7 +7,8 @@ import { ruinEvents } from '@/game/events/ruinEvents'
 let registry: StoryEvent[] | null = null
 
 /**
- * 获取所有已注册的事件。懒加载，首次调用时合并所有事件源。
+ * 获取所有已注册的静态事件（引导、介绍类）。
+ * 剧情事件（arrive 触发）在生成地图时由 distributeEvents 分配到具体据点。
  */
 export function getEventRegistry(): StoryEvent[] {
   if (!registry) {

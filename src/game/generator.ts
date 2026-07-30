@@ -16,8 +16,12 @@ import type {
   PlayerState,
   QuestState,
   RetainerState,
+  StoryEvent,
   TradeLinkState,
 } from '@/game/types'
+import { smallEvents } from '@/game/events/smallEvents'
+import { questEvents } from '@/game/events/questEvents'
+import { eventChains } from '@/game/events/eventChains'
 
 function createRng(seed: number) {
   let value = seed % 2147483647
@@ -498,17 +502,19 @@ export function createNewGame(config: GameConfig = defaultConfig, seed = Date.no
       nodes,
       edges,
       selectedNodeId: startNode.id,
+      startingNodeId: startNode.id,
       pendingPlan: undefined,
       generatedEvents: [],
       logs: ['你获得了限期开拓许可，商会飞舟从起始城镇启航。'],
       finalObjectiveUnlocked: false,
       finalObjectiveCompleted: false,
       lastMoveRangeUpgradeUnlocked: false,
+      ruinMapsAvailable: nodes.filter((n) => n.type === 'ruin').map((n) => n.id),
     },
     storyFlags: {},
   }
 
-  generateRelicEvents(session)
+  distributeEvents(session)
   return session
 }
 
@@ -524,92 +530,180 @@ function seededShuffle<T>(arr: T[], seed: number): T[] {
   return result
 }
 
-function generateRelicEvents(session: GameSession) {
+/**
+ * 将 arrive 触发的事件分配到各据点，类似 relic 系统的生成逻辑。
+ * 每个事件实例只绑定在一个特定节点上，避免访问时随机 roll 太密集。
+ */
+function distributeEvents(session: GameSession) {
+  // ══════════════════════════════════════════════
+  // 1. 宗门秘宝 — 生成遗物配对 + 归还事件
+  // ══════════════════════════════════════════════
   const sects = session.world.nodes.filter((n) => n.type === 'sect')
   const ruins = session.world.nodes.filter((n) => n.type === 'ruin')
-  if (sects.length === 0 || ruins.length === 0) {
-    console.log('[generateRelicEvents] 没有宗门或遗迹，跳过生成', { sects: sects.length, ruins: ruins.length })
-    return
+  const relicReturnEvents: StoryEvent[] = []
+  if (sects.length > 0 && ruins.length > 0) {
+    const count = Math.min(3, sects.length, ruins.length)
+    const pickedSects = seededShuffle(sects, session.world.seed + 9999).slice(0, count)
+    const shuffledRuins = seededShuffle(ruins, session.world.seed + 8888)
+    const suffixes = seededShuffle(
+      ['镇门之宝', '传世法宝', '护宗秘宝', '开派遗宝', '历代传承', '祖师遗物'],
+      session.world.seed + 7777,
+    )
+
+    const relicPairs: Array<{ ruinName: string; relicName: string; sectName: string; flagPrefix: string }> = []
+
+    pickedSects.forEach((sect, index) => {
+      const ruin = shuffledRuins[index % shuffledRuins.length]
+      const suffix = suffixes[index % suffixes.length]
+      const relicName = `${sect.name}${suffix}`
+      const rewardSs = 600 + Math.floor(Math.random() * 400)
+      const flagPrefix = `relic_${sect.id}`
+
+      // 在废墟上标记遗物数据，探索完成后发放
+      ruin.relicData = { itemName: relicName, flagPrefix }
+      relicPairs.push({ ruinName: ruin.name, relicName, sectName: sect.name, flagPrefix })
+
+      // 到宗门归还遗物事件（类似分配事件，直接绑定 nodeId）
+      relicReturnEvents.push({
+        id: `${flagPrefix}_return`,
+        title: `归还遗物`,
+        trigger: 'arrive',
+        condition: {
+          nodeId: sect.id,
+          flagsRequired: [`${flagPrefix}_found`],
+          flagsBlocked: [`${flagPrefix}_returned`],
+        },
+        priority: 10,
+        repeatable: false,
+        flagOnStart: `${flagPrefix}_return_encountered`,
+        steps: [
+          {
+            mode: 'portrait-right',
+            speaker: '宗门长老',
+            characterName: '宗门长老',
+            portraitUrl: `${import.meta.env.BASE_URL}images/portraits/char-01.webp`,
+            content: `会长亲临，有失远迎。敢问何事劳烦大驾？`,
+          },
+          {
+            mode: 'portrait-left',
+            speaker: '会长',
+            portraitUrl: `${import.meta.env.BASE_URL}images/portraits/char-01.webp`,
+            content: `前些日子在${ruin.name}探查，发现了一件贵派古物，应当是贵派遗失之物，特来奉还。`,
+          },
+          {
+            mode: 'portrait-right',
+            speaker: '宗门长老',
+            characterName: '宗门长老',
+            portraitUrl: `${import.meta.env.BASE_URL}images/portraits/char-01.webp`,
+            content: `（接过法器，双手微颤）这……这是我派遗失多年的${suffix}！会长大恩，本门铭记于心！`,
+          },
+          {
+            mode: 'portrait-left',
+            speaker: '会长',
+            portraitUrl: `${import.meta.env.BASE_URL}images/portraits/char-01.webp`,
+            content: `物归原主，不必言谢。`,
+            effects: [
+              { type: 'remove_item', itemName: relicName },
+              { type: 'add_spirit_stone', amount: rewardSs },
+              { type: 'set_flag', flag: `${flagPrefix}_returned` },
+            ],
+          },
+        ],
+        onComplete: [],
+      })
+    })
+
+    // 控制台遗物清单
+    console.log('%c═══ 本局遗物清单 ═══', 'font-size:14px;font-weight:bold;color:#f0c080')
+    relicPairs.forEach((pair, i) => {
+      console.log(
+        `  ${i + 1}. 探索「%c${pair.ruinName}%c」可获得「%c${pair.relicName}%c」，归还至「%c${pair.sectName}%c」领取奖励`,
+        'color:#8fdf8f;font-weight:bold',
+        '',
+        'color:#f0c080;font-weight:bold',
+        '',
+        'color:#8fc8f0;font-weight:bold',
+        '',
+      )
+    })
+    console.log('%c══════════════════', 'font-size:14px;font-weight:bold;color:#f0c080')
   }
 
-  const count = Math.min(3, sects.length, ruins.length)
-  const pickedSects = seededShuffle(sects, session.world.seed + 9999).slice(0, count)
-  const shuffledRuins = seededShuffle(ruins, session.world.seed + 8888)
-  const suffixes = seededShuffle(
-    ['镇门之宝', '传世法宝', '护宗秘宝', '开派遗宝', '历代传承', '祖师遗物'],
-    session.world.seed + 7777,
-  )
+  // ══════════════════════════════════════════════
+  // 2. 剧情事件 — 分配到各据点
+  // ══════════════════════════════════════════════
+  const allArriveEvents: StoryEvent[] = [
+    ...smallEvents.filter((e) => e.trigger === 'arrive'),
+    ...questEvents.filter((e) => e.trigger === 'arrive'),
+    ...eventChains.filter((e) => e.trigger === 'arrive'),
+  ]
 
-  const relicPairs: Array<{ ruinName: string; relicName: string; sectName: string; flagPrefix: string }> = []
+  const globalEvents: StoryEvent[] = [
+    ...smallEvents.filter((e) => e.trigger !== 'arrive'),
+    ...eventChains.filter((e) => e.trigger !== 'arrive'),
+  ]
 
-  pickedSects.forEach((sect, index) => {
-    const ruin = shuffledRuins[index % shuffledRuins.length]
-    const suffix = suffixes[index % suffixes.length]
-    const relicName = `${sect.name}${suffix}`
-    const rewardSs = 600 + Math.floor(Math.random() * 400)
-    const flagPrefix = `relic_${sect.id}`
+  // produced = 遗物归还事件 + 全局事件（turn_end/action 等）+ 分配到据点的 arrive 事件
+  const produced: StoryEvent[] = [
+    ...relicReturnEvents,
+    ...globalEvents.map((e) => structuredClone(e)),
+  ]
 
-    // 在废墟上标记遗物数据，探索完成后发放
-    ruin.relicData = { itemName: relicName, flagPrefix }
-    relicPairs.push({ ruinName: ruin.name, relicName, sectName: sect.name, flagPrefix })
+  const rng = createRng(session.world.seed + 33333)
+  const nodes = session.world.nodes.filter((n) => n.id !== session.world.startingNodeId)
 
-    // 到宗门归还遗物事件
-    session.world.generatedEvents.push({
-      id: `${flagPrefix}_return`,
-      title: `归还遗物`,
-      trigger: 'arrive',
-      condition: {
-        nodeId: sect.id,
-        flagsRequired: [`${flagPrefix}_found`],
-        flagsBlocked: [`${flagPrefix}_returned`],
-      },
-      priority: 10,
-      repeatable: false,
-      flagOnStart: `${flagPrefix}_return_encountered`,
-      steps: [
-        {
-          mode: 'portrait-right',
-          speaker: '宗门长老',
-          characterName: '宗门长老',
-          content: `会长亲临，有失远迎。敢问何事劳烦大驾？`,
+  if (nodes.length > 0) {
+    // 记录每个节点已分配的事件数，尽量均匀
+    const nodeCounts = new Map<string, number>()
+    for (const node of nodes) nodeCounts.set(node.id, 0)
+
+    for (const event of allArriveEvents) {
+      const preferredType = event.condition.nodeType
+      let compatible = nodes
+      if (preferredType) compatible = compatible.filter((n) => n.type === preferredType)
+      if (compatible.length === 0) compatible = nodes // 降级到全部节点
+
+      // 选已分配事件最少的节点
+      compatible.sort((a, b) => (nodeCounts.get(a.id) ?? 0) - (nodeCounts.get(b.id) ?? 0))
+      const poolSize = Math.min(3, compatible.length)
+      const chosen = compatible[Math.floor(rng() * poolSize)]
+
+      nodeCounts.set(chosen.id, (nodeCounts.get(chosen.id) ?? 0) + 1)
+
+      // 创建实例，绑定到具体节点
+      produced.push({
+        ...event,
+        condition: {
+          ...event.condition,
+          nodeId: chosen.id,
+          randomChance: undefined,
+          nodeType: undefined,
+          excludeStartingNode: undefined,
         },
-        {
-          mode: 'portrait-left',
-          speaker: '会长',
-          content: `前些日子在${ruin.name}探查，发现了一件贵派古物，应当是贵派遗失之物，特来奉还。`,
-        },
-        {
-          mode: 'portrait-right',
-          speaker: '宗门长老',
-          content: `（接过法器，双手微颤）这……这是我派遗失多年的${suffix}！会长大恩，本门铭记于心！`,
-        },
-        {
-          mode: 'portrait-left',
-          speaker: '会长',
-          content: `物归原主，不必言谢。`,
-          effects: [
-            { type: 'remove_item', itemName: relicName },
-            { type: 'add_spirit_stone', amount: rewardSs },
-            { type: 'set_flag', flag: `${flagPrefix}_returned` },
-          ],
-        },
-      ],
-      onComplete: [],
-    })
-  })
+        steps: event.steps.map((s) => ({
+          ...s,
+          choices: s.choices?.map((c) => ({ ...c, effects: c.effects ? [...c.effects] : [] })),
+        })),
+        onComplete: event.onComplete?.map((e) => ({ ...e })),
+      })
+    }
+  }
 
-  // ── 控制台输出遗物清单 ──
-  console.log('%c═══ 本局遗物清单 ═══', 'font-size:14px;font-weight:bold;color:#f0c080')
-  relicPairs.forEach((pair, i) => {
+  session.world.generatedEvents = produced
+
+  // ── 控制台输出事件分配清单 ──
+  console.log('%c═══ 本局事件分配 ═══', 'font-size:14px;font-weight:bold;color:#8fc8f0')
+  for (const node of nodes) {
+    const eventsHere = produced.filter((e) => e.condition.nodeId === node.id)
+    if (eventsHere.length === 0) continue
     console.log(
-      `  ${i + 1}. 探索「%c${pair.ruinName}%c」可获得「%c${pair.relicName}%c」，归还至「%c${pair.sectName}%c」领取奖励`,
+      `%c${node.name}%c (${node.type}) → ${eventsHere.length} 个事件:`,
       'color:#8fdf8f;font-weight:bold',
       '',
-      'color:#f0c080;font-weight:bold',
-      '',
-      'color:#8fc8f0;font-weight:bold',
-      '',
     )
-  })
-  console.log('%c══════════════════', 'font-size:14px;font-weight:bold;color:#f0c080')
+    for (const ev of eventsHere) {
+      console.log(`  · ${ev.title ?? ev.id}`)
+    }
+  }
+  console.log('%c══════════════════', 'font-size:14px;font-weight:bold;color:#8fc8f0')
 }

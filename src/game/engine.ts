@@ -763,6 +763,46 @@ export function getItemCount(session: GameSession, name: string) {
     .reduce((sum, item) => sum + item.count, 0)
 }
 
+/* ====================== 遗迹地图系统 ====================== */
+
+/**
+ * 检查玩家是否持有指定遗迹的地图。
+ * 地图是独特物品，以 name='遗迹地图' + data.ruinId 标识。
+ */
+export function hasRuinMap(session: GameSession, ruinId: string): boolean {
+  return session.player.items.some((i) => i.name === '遗迹地图' && i.data?.ruinId === ruinId)
+}
+
+/**
+ * 从可用池中领取一份遗迹地图，加入玩家背包。
+ * 如果指定 ruinId 的地图不可用，返回原 session（静默失败）。
+ */
+export function acquireRuinMap(session: GameSession, ruinId: string): GameSession {
+  const next = structuredClone(session)
+  const idx = next.world.ruinMapsAvailable.indexOf(ruinId)
+  if (idx === -1) return next
+  next.world.ruinMapsAvailable.splice(idx, 1)
+  next.player.items.push({
+    id: `ruin-map-${ruinId}`,
+    name: '遗迹地图',
+    stackable: false,
+    count: 1,
+    data: { ruinId },
+  })
+  return next
+}
+
+/**
+ * 从可用池中随机获取一份未被领取的遗迹地图。
+ * 如果没有可用的地图，返回原 session。
+ */
+export function acquireRandomRuinMap(session: GameSession): GameSession {
+  const available = session.world.ruinMapsAvailable
+  if (available.length === 0) return session
+  const ruinId = available[Math.floor(Math.random() * available.length)]
+  return acquireRuinMap(session, ruinId)
+}
+
 /* ====================== 任务系统 ====================== */
 
 function createRngForSeed(seed: number) {

@@ -5,6 +5,7 @@ import type {
   EventEffect,
   GameSession,
   PendingEvent,
+  QuestType,
   StoryEvent,
   StoryStep,
   TriggerType,
@@ -46,6 +47,8 @@ function checkFieldConditions(session: GameSession, condition: EventCondition): 
   if (condition.turnMax !== undefined && session.world.currentTurn > condition.turnMax) return false
   if (condition.nodeType && session.world.nodes.find((n) => n.id === session.player.currentNodeId)?.type !== condition.nodeType) return false
   if (condition.nodeId && session.player.currentNodeId !== condition.nodeId) return false
+  if (condition.nodeIdBlocked?.includes(session.player.currentNodeId)) return false
+  if (condition.excludeStartingNode && session.player.currentNodeId === session.world.startingNodeId) return false
   if (condition.randomChance !== undefined && Math.random() >= condition.randomChance) return false
 
   return true
@@ -141,6 +144,65 @@ function applyEffect(session: GameSession, effect: EventEffect): void {
       // 记录事件 ID，战斗结束后触发 battle_end 事件
       session.world.pendingBattleEventId = session.world.pendingEvent?.eventId
       break
+    case 'acquire_map': {
+      // 直接操作已克隆的 session，不用 acquireRuinMap（它内部会 clone）
+      const pool = session.world.ruinMapsAvailable
+      const ruinId = effect.ruinId ?? (pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : undefined)
+      if (ruinId) {
+        const idx = pool.indexOf(ruinId)
+        if (idx !== -1) {
+          pool.splice(idx, 1)
+          session.player.items.push({
+            id: `ruin-map-${ruinId}`,
+            name: '遗迹地图',
+            stackable: false,
+            count: 1,
+            data: { ruinId },
+          })
+        }
+      }
+      break
+    }
+    case 'reveal_ruin_map': {
+      const node = session.world.nodes.find((n) => n.id === session.player.currentNodeId)
+      if (node?.ruinExploration) {
+        for (const ruinNode of node.ruinExploration.nodes) {
+          if (!node.ruinExploration.revealed.includes(ruinNode.id)) {
+            node.ruinExploration.revealed.push(ruinNode.id)
+          }
+        }
+      }
+      break
+    }
+    case 'add_quest': {
+      if (!effect.questTitle) break
+      // 交付委托未指定目标节点时，随机选一个非当前、非起始的据点
+      let targetNodeId = effect.questTargetNodeId
+      if (effect.questType === 'deliver' && !targetNodeId) {
+        const candidates = session.world.nodes.filter(
+          (n) => n.id !== session.player.currentNodeId,
+        )
+        if (candidates.length > 0) {
+          targetNodeId = candidates[Math.floor(Math.random() * candidates.length)].id
+        }
+      }
+      session.guild.quests.push({
+        id: `quest-${effect.questTitle.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, '_')}-${Date.now()}`,
+        type: (effect.questType as QuestType) ?? 'purchase',
+        nodeId: session.player.currentNodeId,
+        npcName: effect.flag ?? '',
+        title: effect.questTitle,
+        intro: effect.questDesc ?? '',
+        acceptPrompt: `是否接受「${effect.questTitle}」？`,
+        completePrompt: effect.questCompletePrompt ?? '交付任务。',
+        reward: effect.questReward ?? 100,
+        status: 'active',
+        productId: effect.productId,
+        targetNodeId: targetNodeId,
+        difficulty: effect.questDifficulty ?? 1,
+      })
+      break
+    }
   }
 }
 
@@ -185,6 +247,18 @@ function getAvailableEvents(
 
   // 按 priority 降序排列，取最高
   events.sort((a, b) => b.priority - a.priority)
+  if (events.length > 0) {
+    const node = session.world.nodes.find((n) => n.id === session.player.currentNodeId)
+    console.log(
+      `[事件候选] ${node?.name ?? '?'} (trigger=${trigger}) → 共 ${events.length} 个候选:\n` +
+        events
+          .map(
+            (ev) =>
+              `  · ${ev.title ?? ev.id} (priority=${ev.priority}, randomChance=${ev.condition.randomChance ?? '-'})`,
+          )
+          .join('\n'),
+    )
+  }
   return events
 }
 
@@ -203,6 +277,16 @@ export function checkEvents(
   if (!candidates.length) return null
 
   const event = candidates[0]
+  const currentNode = session.world.nodes.find((n) => n.id === session.player.currentNodeId)
+  console.log(
+    `[事件触发] 「${event.title ?? event.id}」 @ %c${currentNode?.name ?? session.player.currentNodeId}%c` +
+      ` (${currentNode?.type ?? '?'})  turn=${session.world.currentTurn}` +
+      ` 条件=${JSON.stringify(event.condition)}` +
+      ` trigger=${trigger}`,
+    'color:#f0c080;font-weight:bold',
+    '',
+  )
+
   const next = structuredClone(session)
 
   // 设 start flag（防内部重复触发）
@@ -305,6 +389,48 @@ export function tryStartEvent(
   return { event, step: event.steps[0], session: next }
 }
 
+/* ====================== 效果预览文本 ====================== */
+
+const productNameMap: Record<string, string> = {}
+
+function formatEffectPreview(effects: EventEffect[]): string {
+  const parts = effects.map((e) => {
+    switch (e.type) {
+      case 'add_spirit_stone':
+        return `+${e.amount ?? 0} 灵石`
+      case 'remove_spirit_stone':
+        return `-${e.amount ?? 0} 灵石`
+      case 'add_item':
+        return `获得「${e.itemName}」`
+      case 'remove_item':
+        return `消耗「${e.itemName}」`
+      case 'add_cargo':
+        return `购入 ${productNameMap[e.productId ?? ''] ?? e.productId}`
+      case 'remove_cargo':
+        return `售出 ${productNameMap[e.productId ?? ''] ?? e.productId}`
+      case 'add_quest':
+        return `接取委托`
+      case 'repair_airship':
+        return '修复飞舟'
+      case 'damage_airship':
+        return `飞舟受损 -${e.amount ?? 10}`
+      case 'add_crew':
+        return `+${e.amount ?? 5} 船员`
+      case 'remove_crew':
+        return `-${e.amount ?? 5} 船员`
+      case 'acquire_map':
+        return '获得遗迹地图'
+      case 'reveal_ruin_map':
+        return '全图开启'
+      case 'start_combat':
+        return '⚔ 进入战斗'
+      default:
+        return ''
+    }
+  })
+  return parts.filter(Boolean).join(' · ')
+}
+
 /**
  * 构建 dialogConfig 对象供 UI 渲染
  */
@@ -318,12 +444,13 @@ export function buildDialogConfig(
   portraitUrl?: string
   characterName?: string
   imageUrl?: string
-  buttons: { label: string; onClick: () => void }[]
+  buttons: { label: string; onClick: () => void; effectsDesc?: string }[]
 } {
   const buttons = step.choices?.length
     ? step.choices.map((choice, i) => ({
         label: choice.label,
         onClick: () => onAdvance(i),
+        effectsDesc: choice.effects?.length ? formatEffectPreview(choice.effects) : undefined,
       }))
     : [{ label: '继续', onClick: () => onAdvance() }]
 

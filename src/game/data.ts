@@ -135,6 +135,10 @@ export const itemDefinitions: { id: string; name: string; stackable: boolean }[]
   { id: 'item-golden-armor', name: '金甲符', stackable: true },
   { id: 'item-poison-pill', name: '避毒丹', stackable: true },
   { id: 'item-formation-pearl', name: '破阵珠', stackable: true },
+  { id: 'quest-remnant-left', name: '残图·左', stackable: false },
+  { id: 'quest-remnant-right', name: '残图·右', stackable: false },
+  { id: 'quest-blackwind-evidence', name: '黑风商会罪证', stackable: false },
+  { id: 'quest-trial-token', name: '试炼令牌', stackable: false },
 ]
 
 export const itemNameMap = Object.fromEntries(itemDefinitions.map((item) => [item.id, item.name]))

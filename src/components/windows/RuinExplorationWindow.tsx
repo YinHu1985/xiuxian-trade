@@ -1,4 +1,4 @@
-import { getCurrentNode, getRuinReachableNodes, getRuinPendingEncounter, getItemCount } from '@/game/engine'
+import { getCurrentNode, getRuinReachableNodes, getRuinPendingEncounter, getItemCount, hasRuinMap } from '@/game/engine'
 import { obstacleLabelMap } from '@/game/data'
 import { StatChip } from '@/components/ui'
 import { useGameStore } from '@/store/gameStore'
@@ -34,6 +34,7 @@ export function RuinExplorationWindow({
   const ruin = currentNode.ruinExploration
   const pendingEncounter = getRuinPendingEncounter(session)
   const reachable = getRuinReachableNodes(session)
+  const hasMap = hasRuinMap(session, currentNode.id)
 
   // ── 遗物发现弹窗（依赖引擎层瞬态标记 _pendingRelicPopup） ──
   const pendingPopup = ruin?._pendingRelicPopup ?? undefined
@@ -165,11 +166,18 @@ export function RuinExplorationWindow({
                       : '前方出现禁制'}
             </p>
           </div>
-          {ruin.completed ? (
-            <div className="rounded-[10px] border border-yellow-400/50 bg-yellow-400/10 px-3 py-1.5 text-xs text-yellow-200">
-              已探索
-            </div>
-          ) : null}
+          <div className="flex items-center gap-2">
+            {hasMap ? (
+              <div className="rounded-[10px] border border-sky-400/50 bg-sky-400/10 px-3 py-1.5 text-xs text-sky-200">
+                持有地图
+              </div>
+            ) : null}
+            {ruin.completed ? (
+              <div className="rounded-[10px] border border-yellow-400/50 bg-yellow-400/10 px-3 py-1.5 text-xs text-yellow-200">
+                已探索
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -234,7 +242,7 @@ export function RuinExplorationWindow({
             const isReachable = reachable.some((n) => n.id === node.id)
             const isCurrentPos = ruin.currentPos === node.id && ruin.attemptActive
             const isPassed = (ruin.passed ?? []).includes(node.id)
-            const isRevealed = ruin.revealed.includes(node.id) || ruin.completed
+            const isRevealed = ruin.revealed.includes(node.id) || ruin.completed || hasMap
 
             // 样式
             let style = 'border-slate-600/25 bg-slate-800/20 text-slate-500'

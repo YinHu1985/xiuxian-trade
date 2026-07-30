@@ -218,6 +218,15 @@ const [dialogConfig, setDialogConfig] = useState<{
           onClick: () => {
             completeQuest(quest.id)
             setDialogConfig(null)
+            // 委托完成后检查 quest_complete 触发事件
+            const qcSession = useGameStore.getState().session
+            if (qcSession) {
+              const qcEvent = checkEvents('quest_complete', qcSession)
+              if (qcEvent) {
+                loadSession(qcEvent.session)
+                setDialogConfig(buildDialogConfig(qcEvent.step, handleEventAdvance))
+              }
+            }
           },
         },
         { label: '稍后再说', onClick: () => setDialogConfig(null) },
@@ -267,6 +276,16 @@ const [dialogConfig, setDialogConfig] = useState<{
           setDialogConfig(buildDialogConfig(eventResult.step, handleEventAdvance))
           return // arrive 事件优先，跳过随机遭遇
         }
+      }
+    }
+
+    // 每回合结束时检查 turn_end 事件
+    const turnEndSession = useGameStore.getState().session
+    if (turnEndSession) {
+      const turnEndEvent = checkEvents('turn_end', turnEndSession)
+      if (turnEndEvent) {
+        loadSession(turnEndEvent.session)
+        setDialogConfig(buildDialogConfig(turnEndEvent.step, handleEventAdvance))
       }
     }
 
@@ -361,7 +380,18 @@ const [dialogConfig, setDialogConfig] = useState<{
                   session={session}
                   nodeId={overlayNode.id}
                   venue={getRumorVenueCopy(overlayNode.type)}
-                  onTavernRumor={tavernRumor}
+                  onTavernRumor={() => {
+                    tavernRumor()
+                    // 打听完后检查 action 事件（酒馆奇闻等）
+                    const rumourSession = useGameStore.getState().session
+                    if (rumourSession) {
+                      const rumourEvent = checkEvents('action', rumourSession, { actionType: 'tavern_listen' })
+                      if (rumourEvent) {
+                        loadSession(rumourEvent.session)
+                        setDialogConfig(buildDialogConfig(rumourEvent.step, handleEventAdvance))
+                      }
+                    }
+                  }}
                   onAcceptQuest={(quest) => showQuestAcceptDialog(quest)}
                   onCompleteQuest={(quest) => showQuestCompleteDialog(quest)}
                   onRecruitCrew={recruitCrew}

@@ -181,6 +181,7 @@ export interface WorldState {
   nodes: NodeState[]
   edges: EdgeState[]
   selectedNodeId: string
+  startingNodeId: string
   pendingPlan?: TurnPlanState
   pendingEvent?: PendingEvent
   pendingBattleEventId?: string  // start_combat 效果触发时记录事件 ID，用于战斗结束后的 battle_end hook
@@ -190,6 +191,8 @@ export interface WorldState {
   finalObjectiveCompleted: boolean
   lastMoveRangeUpgradeUnlocked: boolean  // TODO: 暂无解锁途径，后续会加
   ending?: EndingState
+  /** 仍可获取的遗迹地图对应的遗迹 nodeId 列表 */
+  ruinMapsAvailable: string[]
 }
 
 export interface EndingState {
@@ -286,6 +289,9 @@ export interface EventCondition {
   turnMax?: number
   nodeType?: NodeType
   nodeId?: string
+  nodeIdBlocked?: string[]
+  /** 为 true 时，在起始据点不触发 */
+  excludeStartingNode?: boolean
   randomChance?: number
 }
 
@@ -305,10 +311,23 @@ export interface EventEffect {
     | 'remove_crew'
     | 'set_prosperity'
     | 'start_combat'
+    | 'add_quest'
+    | 'acquire_map'
+    | 'reveal_ruin_map'
   flag?: string
   amount?: number
   itemName?: string
   productId?: string
+  // add_quest 专用字段
+  questTitle?: string
+  questDesc?: string
+  questType?: string
+  questTargetNodeId?: string
+  questReward?: number
+  questDifficulty?: number
+  questCompletePrompt?: string
+  // acquire_map 专用字段：指定遗迹 nodeId，不指定则随机从 ruinMapsAvailable 取一个
+  ruinId?: string
 }
 
 export interface StoryChoice {
