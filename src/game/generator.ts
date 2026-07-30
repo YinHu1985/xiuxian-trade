@@ -1,5 +1,6 @@
 import { defaultConfig } from '@/game/config'
 import { allCategories, craftedCategories, getProductsForNodeType, productMap, rawMaterialCategories } from '@/game/data'
+import { ensureRuinExploration } from '@/game/engine'
 import type {
   BranchState,
   BuildingState,
@@ -512,6 +513,13 @@ export function createNewGame(config: GameConfig = defaultConfig, seed = Date.no
       ruinMapsAvailable: nodes.filter((n) => n.type === 'ruin').map((n) => n.id),
     },
     storyFlags: {},
+  }
+
+  // 初始化所有废墟的探索地图（避免事件触发时 lazy 初始化导致数据不一致）
+  for (const node of nodes) {
+    if (node.type === 'ruin') {
+      ensureRuinExploration(session, node.id)
+    }
   }
 
   distributeEvents(session)

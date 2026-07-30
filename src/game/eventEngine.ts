@@ -1,5 +1,6 @@
 import { getEventRegistry } from '@/game/events/registry'
 import { productMap } from '@/game/data'
+import { ensureRuinExploration } from '@/game/engine'
 import type {
   EventCondition,
   EventEffect,
@@ -164,7 +165,9 @@ function applyEffect(session: GameSession, effect: EventEffect): void {
       break
     }
     case 'reveal_ruin_map': {
-      const node = session.world.nodes.find((n) => n.id === session.player.currentNodeId)
+      const nodeId = session.player.currentNodeId
+      ensureRuinExploration(session, nodeId)
+      const node = session.world.nodes.find((n) => n.id === nodeId)
       if (node?.ruinExploration) {
         for (const ruinNode of node.ruinExploration.nodes) {
           if (!node.ruinExploration.revealed.includes(ruinNode.id)) {
