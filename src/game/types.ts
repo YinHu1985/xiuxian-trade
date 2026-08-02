@@ -4,6 +4,28 @@ export type ProductCategory = 'herb' | 'ore' | 'pelt' | 'essence' | 'talisman' |
 export type Realm = 'qi' | 'foundation' | 'golden' | 'nascent'
 export type BuildingType = 'hub' | 'alchemy' | 'forge' | 'sigil' | 'auction'
 export type RetainerStatus = 'idle' | 'busy' | 'trade'
+/** 战斗人员能力类型：御剑/控阵/灵力/操船/炼体 */
+export type CombatSkill = 'sword' | 'formation' | 'spirit' | 'ship' | 'body'
+
+/** 三种攻防（飞剑/法术/近身）的六项属性 */
+export interface CombatStats {
+  swordAtk: number
+  swordDef: number
+  spellAtk: number
+  spellDef: number
+  meleeAtk: number
+  meleeDef: number
+}
+
+/** 战斗人员（NPC 队友），hp 即耐久 */
+export interface CombatantState {
+  id: string
+  name: string
+  skill: CombatSkill
+  stats: CombatStats
+  hp: number
+  maxHp: number
+}
 export type RuinObstacleType = 'formation' | 'poison' | 'sword' | 'none'
 export type SectSaleItem = 'item-golden-armor' | 'item-poison-pill' | 'item-formation-pearl'
 export type TurnPlanType = 'travel' | 'retainer' | 'repair-gate' | 'building'
@@ -162,6 +184,8 @@ export interface PlayerState {
   airshipMaxDurability: number
   airshipCrew: number
   airshipMaxCrew: number
+  /** 战斗人员（NPC 队友）编队 */
+  combatants: CombatantState[]
 }
 
 export interface GuildState {
@@ -240,6 +264,8 @@ export interface EconomyConfig {
   moveRangeUpgradeBaseCost: number
   repairAirshipCost: number
   recruitCrewCost: number
+  /** 修整战斗人员：每恢复 1 点耐久所需灵石 */
+  repairCombatantCost: number
 }
 
 export interface MarketConfig {

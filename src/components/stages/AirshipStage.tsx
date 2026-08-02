@@ -1,9 +1,116 @@
 import { useState, type JSX } from 'react'
 import { airshipBackgroundUrl } from '@/game/backgrounds'
+import { COMBAT_SKILL_DESCRIPTIONS, COMBAT_SKILL_LABELS, SHIP_STATS } from '@/game/battle'
+import { getRepairCombatantCost } from '@/game/engine'
 import { OverlayFrame, FloatingPanel, StatChip } from '@/components/ui'
-import type { GameSession } from '@/game/types'
+import type { CombatSkill, GameSession } from '@/game/types'
 
 type CabinTab = 'items' | 'quests' | 'logs'
+
+const SKILL_CHIP: Record<CombatSkill, string> = {
+  sword: 'text-amber-300 border-amber-300/40 bg-amber-300/5',
+  formation: 'text-sky-300 border-sky-300/40 bg-sky-300/5',
+  spirit: 'text-violet-300 border-violet-300/40 bg-violet-300/5',
+  ship: 'text-emerald-300 border-emerald-300/40 bg-emerald-300/5',
+  body: 'text-red-300 border-red-300/40 bg-red-300/5',
+}
+
+function hpBarColorClass(hp: number, maxHp: number): string {
+  const ratio = hp / maxHp
+  if (ratio > 0.6) return 'bg-emerald-500'
+  if (ratio > 0.3) return 'bg-amber-500'
+  return 'bg-red-500'
+}
+
+/** 随行修士：查看能力 + 花钱修整（回复耐久） */
+function CombatantRosterWindow({
+  session,
+  onRepairCombatant,
+  onClose,
+}: {
+  session: GameSession
+  onRepairCombatant: (combatantId: string) => void
+  onClose: () => void
+}) {
+  const shipStats: Array<[string, number, string]> = [
+    ['飞剑攻', SHIP_STATS.swordAtk, 'text-amber-200'],
+    ['飞剑防', SHIP_STATS.swordDef, 'text-sky-200'],
+    ['法术攻', SHIP_STATS.spellAtk, 'text-violet-200'],
+    ['法术防', SHIP_STATS.spellDef, 'text-emerald-200'],
+    ['近身攻', SHIP_STATS.meleeAtk, 'text-red-200'],
+    ['近身防', SHIP_STATS.meleeDef, 'text-orange-200'],
+  ]
+
+  return (
+    <OverlayFrame title="随行修士" onClose={onClose}>
+      <div className="flex h-full flex-col gap-4">
+        <div className="rounded-[16px] border border-[#7a5a36]/50 bg-[linear-gradient(180deg,rgba(67,45,28,0.9),rgba(41,28,19,0.88))] p-4">
+          <p className="text-xs uppercase tracking-[0.3em] text-amber-100/40">主飞舟攻防</p>
+          <div className="mt-3 grid grid-cols-6 gap-2 text-center">
+            {shipStats.map(([label, value, color]) => (
+              <div key={label} className="rounded-[10px] border border-[#7a5a36]/30 bg-[#1a110a]/50 px-2 py-2">
+                <p className="text-[10px] text-[#cdb48a]">{label}</p>
+                <p className={`mt-1 text-base font-bold ${color}`}>{value}</p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-[#7a5a36]">飞舟耐久即其生命值，战斗中固定位于中央格。</p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          <div className="grid gap-3">
+            {session.player.combatants.map((unit) => {
+              const cost = getRepairCombatantCost(session, unit.id)
+              const needRepair = unit.hp < unit.maxHp
+              return (
+                <div
+                  key={unit.id}
+                  className="rounded-[14px] border border-[#7b5b39]/42 bg-[linear-gradient(180deg,rgba(86,58,35,0.92),rgba(55,37,24,0.9))] px-4 py-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm text-[#fff4dd]">{unit.name}</p>
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] ${SKILL_CHIP[unit.skill]}`}>
+                        {COMBAT_SKILL_LABELS[unit.skill]}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-28">
+                        <p className="text-right text-xs text-[#cdb48a]">耐久 {unit.hp}/{unit.maxHp}</p>
+                        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[#1a110a]/70">
+                          <div
+                            className={`h-full rounded-full ${hpBarColorClass(unit.hp, unit.maxHp)}`}
+                            style={{ width: `${(unit.hp / unit.maxHp) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                      <button
+                        className="action disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={!needRepair || session.player.spiritStone < cost}
+                        onClick={() => onRepairCombatant(unit.id)}
+                      >
+                        {needRepair ? `修整（${cost} 灵石）` : '耐久已满'}
+                      </button>
+                    </div>
+                  </div>
+                  <p className="mt-1 text-xs text-[#cdb48a]">{COMBAT_SKILL_DESCRIPTIONS[unit.skill]}</p>
+                  <div className="mt-2 grid grid-cols-6 gap-2 text-center text-[11px]">
+                    <span className="text-amber-200">剑攻 {unit.stats.swordAtk}</span>
+                    <span className="text-sky-200">剑防 {unit.stats.swordDef}</span>
+                    <span className="text-violet-200">法攻 {unit.stats.spellAtk}</span>
+                    <span className="text-emerald-200">法防 {unit.stats.spellDef}</span>
+                    <span className="text-red-200">近攻 {unit.stats.meleeAtk}</span>
+                    <span className="text-orange-200">近防 {unit.stats.meleeDef}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    </OverlayFrame>
+  )
+}
 
 function CaptainCabin({ session, onClose }: { session: GameSession; onClose: () => void }) {
   const [activeTab, setActiveTab] = useState<CabinTab>('items')
@@ -156,6 +263,7 @@ export function AirshipStage({
   onIncreaseCargoCapacity,
   onIncreaseMoveRange,
   onRepairAirship,
+  onRepairCombatant,
   onStartDrill,
 }: {
   session: GameSession
@@ -163,6 +271,7 @@ export function AirshipStage({
   onIncreaseCargoCapacity: () => void
   onIncreaseMoveRange: () => void
   onRepairAirship: () => void
+  onRepairCombatant: (combatantId: string) => void
   onStartDrill: () => void
 }) {
   const retainerCost = session.config.economy.retainerUpgradeBaseCost * (session.player.retainerCapacity - 1)
@@ -175,6 +284,7 @@ export function AirshipStage({
 
   const [showModifications, setShowModifications] = useState(false)
   const [showCaptainCabin, setShowCaptainCabin] = useState(false)
+  const [showCombatantRoster, setShowCombatantRoster] = useState(false)
 
   return (
     <div className="relative h-full overflow-hidden bg-[linear-gradient(180deg,rgba(66,56,34,0.38),rgba(20,14,11,0.96)_76%)]">
@@ -233,6 +343,15 @@ export function AirshipStage({
           </p>
           <button className="action mt-3 w-full" onClick={() => setShowCaptainCabin(true)}>
             进入船长室
+          </button>
+        </FloatingPanel>
+
+        <FloatingPanel title="随行修士" subtitle="战斗人员">
+          <p className="text-sm leading-6 text-[#ead8ba]">
+            随行修士 {session.player.combatants.length} 人。查看能力、修整耐久，编入战斗阵型。
+          </p>
+          <button className="action mt-3 w-full" onClick={() => setShowCombatantRoster(true)}>
+            编组管理
           </button>
         </FloatingPanel>
 
@@ -317,6 +436,14 @@ export function AirshipStage({
 
       {showCaptainCabin ? (
         <CaptainCabin session={session} onClose={() => setShowCaptainCabin(false)} />
+      ) : null}
+
+      {showCombatantRoster ? (
+        <CombatantRosterWindow
+          session={session}
+          onRepairCombatant={onRepairCombatant}
+          onClose={() => setShowCombatantRoster(false)}
+        />
       ) : null}
     </div>
   )

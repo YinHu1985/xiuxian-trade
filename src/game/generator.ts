@@ -1,4 +1,5 @@
 import { defaultConfig } from '@/game/config'
+import { createStartingCombatants } from '@/game/battle'
 import { allCategories, craftedCategories, getProductsForNodeType, productMap, rawMaterialCategories } from '@/game/data'
 import { ensureRuinExploration } from '@/game/engine'
 import type {
@@ -577,6 +578,7 @@ export function createNewGame(config: GameConfig = defaultConfig, seed = Date.no
     airshipMaxDurability: 100,
     airshipCrew: 80,
     airshipMaxCrew: 80,
+    combatants: createStartingCombatants(),
   }
 
   const guild: GuildState = {

@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import type { BattleState as BattleData, BattleSide, BattleLogEntry } from '@/game/battle'
-import { deployCrew, getDeployedCrew, simulateFullBattle, isShipDestroyed } from '@/game/battle'
+import {
+  autoDeployPlayer,
+  clearCell,
+  COMBAT_SKILL_LABELS,
+  deployCombatant,
+  getDeployedCount,
+  isShipDestroyed,
+  simulateFullBattle,
+} from '@/game/battle'
+import type { CombatSkill } from '@/game/types'
 
 const ROW_LABELS = ['後', '中', '前']
 const COL_LABELS = ['上', '中', '下']
@@ -9,8 +18,7 @@ function getCellLabel(index: number): string {
   return `${ROW_LABELS[Math.floor(index / 3)]}${COL_LABELS[index % 3]}`
 }
 
-function cellColor(hp: number, maxHp: number, type: string): string {
-  if (type === 'empty') return ''
+function cellColor(hp: number, maxHp: number): string {
   const ratio = hp / maxHp
   if (ratio > 0.6) return 'text-emerald-300'
   if (ratio > 0.3) return 'text-amber-300'
@@ -24,6 +32,14 @@ function hpBarColor(hp: number, maxHp: number): string {
   return 'bg-red-500'
 }
 
+const SKILL_COLOR: Record<CombatSkill, string> = {
+  sword: 'text-amber-300 border-amber-300/40 bg-amber-300/5',
+  formation: 'text-sky-300 border-sky-300/40 bg-sky-300/5',
+  spirit: 'text-violet-300 border-violet-300/40 bg-violet-300/5',
+  ship: 'text-emerald-300 border-emerald-300/40 bg-emerald-300/5',
+  body: 'text-red-300 border-red-300/40 bg-red-300/5',
+}
+
 function BattleGrid({
   side,
   label,
@@ -33,7 +49,7 @@ function BattleGrid({
   highlightDef,
   visualHp,
   onCellClick,
-  onCellReduce,
+  showEmptyHint,
 }: {
   side: BattleSide
   label: string
@@ -43,7 +59,7 @@ function BattleGrid({
   highlightDef?: number | null
   visualHp?: number[]
   onCellClick?: (pos: number) => void
-  onCellReduce?: (pos: number) => void
+  showEmptyHint?: boolean
 }) {
   return (
     <div className="flex flex-col items-center gap-1">
@@ -74,6 +90,7 @@ function BattleGrid({
                       : cell.type === 'ship'
                         ? 'border-[#c19154]/60 bg-[linear-gradient(180deg,rgba(99,65,38,0.95),rgba(61,40,25,0.9))] text-[#fff4dd]'
                         : 'border-[#7a5a36]/55 bg-[linear-gradient(180deg,rgba(67,45,28,0.92),rgba(41,28,19,0.9))] text-[#ead8ba] hover:border-[#c19154]/50',
+                    cell.type === 'empty' && showEmptyHint ? 'cursor-pointer ring-1 ring-amber-300/50' : '',
                     isDef ? 'cell-defender' : '',
                     isAtk ? 'cell-attacker' : '',
                   ].join(' ')}
@@ -82,31 +99,21 @@ function BattleGrid({
                     <span className="text-[10px] opacity-40">{getCellLabel(pos)}</span>
                   ) : (
                     <>
-                      <span className="text-[10px] leading-tight opacity-60">
-                        {cell.type === 'ship' ? '飞舟' : getCellLabel(pos)}
+                      <span className="w-full truncate px-1 text-center text-[10px] leading-tight opacity-70">
+                        {cell.type === 'ship' ? '飞舟' : cell.name}
                       </span>
-                      <span className={`text-sm font-bold ${cellColor(hp, cell.maxHp, cell.type)}`}>
-                        {hp}
-                      </span>
-                      {cell.type === 'crew' && onCellReduce ? (
-                        <div className="mt-0.5 flex items-center gap-3">
-                          <span
-                            className="cursor-pointer text-xs leading-none text-red-400/70 hover:text-red-300 select-none"
-                            onClick={(e) => { e.stopPropagation(); onCellReduce(pos) }}
-                          >−</span>
-                          <span
-                            className="cursor-pointer text-xs leading-none text-emerald-400/70 hover:text-emerald-300 select-none"
-                            onClick={(e) => { e.stopPropagation(); onCellClick?.(pos) }}
-                          >+</span>
-                        </div>
-                      ) : cell.type === 'crew' ? (
-                        <div className="mt-0.5 h-1 w-12 overflow-hidden rounded-full bg-[#1a110a]/60">
-                          <div
-                            className={`h-full rounded-full ${hpBarColor(hp, cell.maxHp)}`}
-                            style={{ width: `${(hp / cell.maxHp) * 100}%` }}
-                          />
-                        </div>
+                      {cell.skill ? (
+                        <span className={`rounded-full border px-1 text-[8px] leading-tight ${SKILL_COLOR[cell.skill]}`}>
+                          {COMBAT_SKILL_LABELS[cell.skill]}
+                        </span>
                       ) : null}
+                      <span className={`text-sm font-bold leading-tight ${cellColor(hp, cell.maxHp)}`}>{hp}</span>
+                      <div className="mt-0.5 h-1 w-12 overflow-hidden rounded-full bg-[#1a110a]/60">
+                        <div
+                          className={`h-full rounded-full ${hpBarColor(hp, cell.maxHp)}`}
+                          style={{ width: `${(hp / cell.maxHp) * 100}%` }}
+                        />
+                      </div>
                     </>
                   )}
                   {isAtk ? <span className="projectile-marker">✦</span> : null}
@@ -122,16 +129,15 @@ function BattleGrid({
 
 export function BattleModal({
   battle: initialBattle,
-  maxCrew,
   isDrill = true,
   onClose,
 }: {
   battle: BattleData
-  maxCrew: number
   isDrill?: boolean
-  onClose: (settlement?: { shipDamage: number; crewLoss: number; battleResult?: 'win' | 'lose' }) => void
+  onClose: (settlement?: { shipDamage: number; battleResult?: 'win' | 'lose'; combatants: BattleData['playerRoster'] }) => void
 }) {
   const [data, setData] = useState(initialBattle)
+  const [selectedCombatantId, setSelectedCombatantId] = useState<string | null>(null)
   const [attackHighlight, setAttackHighlight] = useState<{
     fromPos: number
     toPos: number
@@ -146,6 +152,7 @@ export function BattleModal({
     playerSide: BattleSide
     enemySide: BattleSide
     result: 'none' | 'player_victory' | 'enemy_victory'
+    roundCount: number
   } | null>(null)
   const pauseTimerRef = useRef<ReturnType<typeof setTimeout>>()
   const dataRef = useRef(data)
@@ -188,7 +195,7 @@ export function BattleModal({
             prev.enemySide = f.enemySide
             prev.phase = 'result'
             prev.logs.push(...animLogsRef.current)
-            prev.roundIndex = Math.ceil(animLogsRef.current.length / 18)
+            prev.roundIndex = f.roundCount
             return { ...prev }
           })
         }
@@ -207,32 +214,55 @@ export function BattleModal({
     }
   }, [animIndex])
 
-  const handleDeployAdd = (pos: number) => {
+  const selectedCombatant = data.playerRoster.find((u) => u.id === selectedCombatantId) ?? null
+
+  /* ====================== 部署交互 ====================== */
+
+  const handleRosterClick = (unitId: string) => {
+    if (data.phase !== 'deploy') return
+    const pos = data.playerSide.cells.findIndex((c) => c.combatantId === unitId)
+    if (pos >= 0) {
+      // 已部署：点击撤下
+      clearCell(data.playerSide, pos)
+      setData({ ...data })
+      return
+    }
+    setSelectedCombatantId(prev => (prev === unitId ? null : unitId))
+  }
+
+  const handleCellClick = (pos: number) => {
     if (data.phase !== 'deploy') return
     const cell = data.playerSide.cells[pos]
     if (cell.type === 'ship') return
-    const remaining = maxCrew - getDeployedCrew(data)
-    if (remaining <= 0) return
-    const amount = Math.min(10, remaining)
-    const newAmount = (cell.type === 'crew' ? cell.currentHp : 0) + amount
-    deployCrew(data, pos, newAmount)
+
+    if (selectedCombatant) {
+      // 同一人再次点击 = 撤下；否则部署（若已部署于他处，先撤下）
+      if (cell.combatantId === selectedCombatant.id) {
+        clearCell(data.playerSide, pos)
+      } else {
+        const existingPos = data.playerSide.cells.findIndex((c) => c.combatantId === selectedCombatant.id)
+        if (existingPos >= 0 && existingPos !== pos) clearCell(data.playerSide, existingPos)
+        deployCombatant(data.playerSide, pos, selectedCombatant)
+      }
+      setSelectedCombatantId(null)
+      setData({ ...data })
+    } else if (cell.type === 'combatant') {
+      // 未选中任何 NPC：点击已部署格 = 撤下
+      clearCell(data.playerSide, pos)
+      setData({ ...data })
+    }
+  }
+
+  const handleAutoDeploy = () => {
+    autoDeployPlayer(data.playerSide, data.playerRoster)
+    setSelectedCombatantId(null)
     setData({ ...data })
   }
 
-  const handleDeployReduce = (pos: number) => {
-    if (data.phase !== 'deploy') return
-    const cell = data.playerSide.cells[pos]
-    if (cell.type !== 'crew') return
-    if (cell.currentHp <= 10) {
-      deployCrew(data, pos, 0)
-    } else {
-      deployCrew(data, pos, cell.currentHp - 10)
-    }
-    setData({ ...data })
-  }
+  /* ====================== 战斗 ====================== */
 
   const startFight = (skipAnim = false, force = false) => {
-    const deployed = getDeployedCrew(data)
+    const deployed = getDeployedCount(data.playerSide)
     if (deployed === 0 && !force) return
 
     const sim = simulateFullBattle(data.playerSide, data.enemySide, data.whoStarts)
@@ -241,13 +271,14 @@ export function BattleModal({
       playerSide: sim.finalPlayerSide,
       enemySide: sim.finalEnemySide,
       result: sim.result,
+      roundCount: sim.roundCount,
     }
 
     setVisualPlayerHp(data.playerSide.cells.map(c => c.currentHp))
     setVisualEnemyHp(data.enemySide.cells.map(c => c.currentHp))
 
     data.phase = 'fighting'
-    data.playerInitialCrew = deployed
+    data.playerDeployedCount = deployed
     setData({ ...data })
 
     if (skipAnim) {
@@ -257,7 +288,7 @@ export function BattleModal({
         prev.enemySide = f.enemySide
         prev.phase = 'result'
         prev.logs.push(...animLogsRef.current)
-        prev.roundIndex = Math.ceil(animLogsRef.current.length / 18)
+        prev.roundIndex = f.roundCount
         return { ...prev }
       })
       setAnimIndex(-1)
@@ -268,23 +299,28 @@ export function BattleModal({
     }
   }
 
-  const autoDeployAll = () => {
-    const total = maxCrew
-    const positions = [0, 1, 2, 3, 5, 6, 7, 8]
-    const perCell = Math.floor(total / positions.length)
-    let extra = total % positions.length
-    positions.forEach((pos) => {
-      const amount = perCell + (extra > 0 ? 1 : 0)
-      if (extra > 0) extra--
-      deployCrew(data, pos, amount)
+  const settle = () => {
+    if (isDrill) {
+      onClose()
+      return
+    }
+    const shipDamage = Math.max(0, data.shipInitialDurability - data.playerSide.cells[4].currentHp)
+    const battleResult: 'win' | 'lose' = isShipDestroyed(data.playerSide) ? 'lose' : 'win'
+    // 将战斗中损失的耐久回写至编队
+    const combatants = data.playerRoster.map((u) => {
+      const cell = data.playerSide.cells.find((c) => c.combatantId === u.id)
+      return cell ? { ...u, hp: Math.max(0, cell.currentHp) } : u
     })
-    setData({ ...data })
+    onClose({ shipDamage, battleResult, combatants })
   }
 
   const playerAtk = attackHighlight?.side === 'player' ? attackHighlight.fromPos : null
   const playerDef = attackHighlight?.side === 'enemy' ? attackHighlight.toPos : null
   const enemyAtk = attackHighlight?.side === 'enemy' ? attackHighlight.fromPos : null
   const enemyDef = attackHighlight?.side === 'player' ? attackHighlight.toPos : null
+
+  const deployedCount = getDeployedCount(data.playerSide)
+  const fallenCount = data.playerSide.cells.filter(c => c.type === 'combatant' && c.currentHp <= 0).length
 
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#1d140d]/76 backdrop-blur-sm">
@@ -331,12 +367,12 @@ export function BattleModal({
               {data.phase === 'result' && (isDrill ? '演习结束' : '战斗结束')}
             </h2>
           </div>
-          {data.phase !== 'fighting' && data.phase !== 'result' ? (
+          {data.phase === 'deploy' ? (
             <button className="action" onClick={() => onClose()}>关闭</button>
           ) : null}
         </div>
 
-        <div className="flex items-start justify-center gap-64">
+        <div className="flex items-start justify-center gap-40">
           <BattleGrid
             side={data.enemySide}
             label="攻击方"
@@ -354,20 +390,85 @@ export function BattleModal({
             highlightAtk={playerAtk}
             highlightDef={playerDef}
             visualHp={data.phase === 'fighting' ? visualPlayerHp : undefined}
-            onCellClick={handleDeployAdd}
-            onCellReduce={data.phase === 'deploy' ? handleDeployReduce : undefined}
+            onCellClick={handleCellClick}
+            showEmptyHint={data.phase === 'deploy' && selectedCombatantId !== null}
           />
         </div>
 
-        <div className="mt-4 flex items-center justify-between">
+        {data.phase === 'deploy' ? (
+          <div className="mt-3 flex items-stretch gap-2 overflow-x-auto pb-1">
+            {data.playerRoster.map((unit) => {
+              const cell = data.playerSide.cells.find((c) => c.combatantId === unit.id)
+              const deployed = Boolean(cell)
+              const selected = selectedCombatantId === unit.id
+              return (
+                <button
+                  key={unit.id}
+                  type="button"
+                  onClick={() => handleRosterClick(unit.id)}
+                  className={[
+                    'flex w-40 shrink-0 flex-col gap-1 rounded-[12px] border p-2 text-left transition',
+                    deployed
+                      ? 'border-emerald-400/50 bg-emerald-400/5'
+                      : selected
+                        ? 'border-amber-300/70 bg-amber-300/10'
+                        : 'border-[#7a5a36]/40 bg-[#2a1e14]/60 hover:border-[#c19154]/50',
+                  ].join(' ')}
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="truncate text-sm font-medium text-[#fff4dd]">{unit.name}</span>
+                    <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] ${SKILL_COLOR[unit.skill]}`}>
+                      {COMBAT_SKILL_LABELS[unit.skill]}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px] text-[#cdb48a]">
+                    <span className="shrink-0">耐久</span>
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#1a110a]/70">
+                      <div
+                        className={`h-full rounded-full ${hpBarColor(unit.hp, unit.maxHp)}`}
+                        style={{ width: `${(unit.hp / unit.maxHp) * 100}%` }}
+                      />
+                    </div>
+                    <span className="shrink-0">{unit.hp}/{unit.maxHp}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1 text-[10px]">
+                    <span className="text-amber-200/90">剑{unit.stats.swordAtk}</span>
+                    <span className="text-violet-200/90">法{unit.stats.spellAtk}</span>
+                    <span className="text-red-200/90">近{unit.stats.meleeAtk}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1 text-[10px] text-[#8fbf8f]">
+                    <span>剑{unit.stats.swordDef}</span>
+                    <span>法{unit.stats.spellDef}</span>
+                    <span>近{unit.stats.meleeDef}</span>
+                  </div>
+                  <p className="text-[10px] leading-tight">
+                    {deployed && cell ? (
+                      <span className="text-emerald-300">{getCellLabel(data.playerSide.cells.indexOf(cell))} · 已部署</span>
+                    ) : selected ? (
+                      <span className="text-amber-300">待部署 · 点击阵位</span>
+                    ) : (
+                      <span className="text-[#6f5539]">点击选中部署</span>
+                    )}
+                  </p>
+                </button>
+              )
+            })}
+          </div>
+        ) : null}
+
+        <div className="mt-3 flex items-center justify-between">
           <div className="flex items-center gap-4 text-sm text-[#ead8ba]">
             {data.phase === 'deploy' ? (
               <>
                 <span>
-                  可部署: <strong className="text-[#fff4dd]">{maxCrew - getDeployedCrew(data)}</strong> / {maxCrew}
+                  已部署: <strong className="text-[#fff4dd]">{deployedCount}</strong> / {Math.min(8, data.playerRoster.length)} 人
                 </span>
                 <span className="text-[#7a5a36]">|</span>
-                <span className="text-xs text-amber-100/40">点击空白格部署(×10)，已部署格可用 [+]/[−] 调整</span>
+                <span className="text-xs text-amber-100/40">
+                  {selectedCombatant
+                    ? `选中「${selectedCombatant.name}」，点击右侧阵位部署`
+                    : '点击修士卡片选中，再点击阵位部署；已部署格点击可撤下'}
+                </span>
               </>
             ) : data.phase === 'fighting' ? (
               <span>回合: <strong className="text-[#fff4dd]">{data.roundIndex}</strong></span>
@@ -379,7 +480,7 @@ export function BattleModal({
             {data.phase === 'deploy' ? (
               <>
                 <button className="action" onClick={() => {
-                  if (getDeployedCrew(data) === 0) {
+                  if (deployedCount === 0) {
                     setConfirmZeroDeploy('normal')
                   } else {
                     startFight()
@@ -388,12 +489,12 @@ export function BattleModal({
                   开始战斗
                 </button>
                 <button className="action" onClick={() => {
-                  if (getDeployedCrew(data) === 0) setConfirmZeroDeploy('quick')
+                  if (deployedCount === 0) setConfirmZeroDeploy('quick')
                   else startFight(true)
                 }}>
                   快速战斗
                 </button>
-                <button className="action" onClick={autoDeployAll}>自动部署</button>
+                <button className="action" onClick={handleAutoDeploy}>自动部署</button>
               </>
             ) : null}
             {data.phase === 'fighting' ? (
@@ -406,7 +507,7 @@ export function BattleModal({
                     prev.enemySide = f.enemySide
                     prev.phase = 'result'
                     prev.logs.push(...animLogsRef.current)
-                    prev.roundIndex = Math.ceil(animLogsRef.current.length / 18)
+                    prev.roundIndex = f.roundCount
                     return { ...prev }
                   })
                 }
@@ -419,37 +520,24 @@ export function BattleModal({
               </button>
             ) : null}
             {data.phase === 'result' ? (
-              <button className="action" onClick={() => {
-                if (!isDrill) {
-                  const shipDamage = data.shipInitialDurability - data.playerSide.cells[4].currentHp
-                  const crewLoss = data.playerInitialCrew - getDeployedCrew(data)
-                  const battleResult: 'win' | 'lose' = isShipDestroyed(data.playerSide) ? 'lose' : 'win'
-                  onClose({ shipDamage, crewLoss, battleResult })
-                } else {
-                  onClose()
-                }
-              }}>
-                结算完成
-              </button>
+              <button className="action" onClick={settle}>结算完成</button>
             ) : null}
           </div>
         </div>
 
         {data.phase === 'result' ? (
-          <div className="mt-4 rounded-[16px] border border-[#7a5a36]/40 bg-[#2a1e14]/60 p-5 text-sm text-[#ead8ba]">
+          <div className="mt-3 flex-1 overflow-hidden rounded-[16px] border border-[#7a5a36]/40 bg-[#2a1e14]/60 p-5 text-sm text-[#ead8ba]">
             <p className="mb-2 text-xs uppercase tracking-[0.25em] text-amber-100/40">战果统计</p>
             <div className="grid grid-cols-3 gap-3">
               <div className="rounded-[12px] border border-[#7a5a36]/35 bg-[#1a110a]/50 p-3 text-center">
                 <p className="text-xs text-amber-100/50">飞舟耐久损失</p>
                 <p className="mt-1 text-lg font-bold text-[#fff4dd]">
-                  {data.shipInitialDurability - data.playerSide.cells[4].currentHp} / {data.shipInitialDurability}
+                  {Math.max(0, data.shipInitialDurability - data.playerSide.cells[4].currentHp)} / {data.shipInitialDurability}
                 </p>
               </div>
               <div className="rounded-[12px] border border-[#7a5a36]/35 bg-[#1a110a]/50 p-3 text-center">
-                <p className="text-xs text-amber-100/50">船员损失</p>
-                <p className="mt-1 text-lg font-bold text-[#fff4dd]">
-                  {data.playerInitialCrew - getDeployedCrew(data) > 0 ? data.playerInitialCrew - getDeployedCrew(data) : 0} / {data.playerInitialCrew}
-                </p>
+                <p className="text-xs text-amber-100/50">战斗人员阵亡</p>
+                <p className="mt-1 text-lg font-bold text-[#fff4dd]">{fallenCount} / {data.playerDeployedCount}</p>
               </div>
               <div className="rounded-[12px] border border-[#7a5a36]/35 bg-[#1a110a]/50 p-3 text-center">
                 <p className="text-xs text-amber-100/50">战斗结论</p>
@@ -458,14 +546,15 @@ export function BattleModal({
                 </p>
               </div>
             </div>
-            <div className="mt-4 max-h-[120px] overflow-y-auto rounded-[12px] border border-[#7a5a36]/25 bg-[#1a110a]/60 p-3 text-xs leading-6">
+            <div className="mt-3 max-h-[120px] overflow-y-auto rounded-[12px] border border-[#7a5a36]/25 bg-[#1a110a]/60 p-3 text-xs leading-6">
               {data.logs.length === 0 ? (
                 <p className="text-amber-100/30">无战斗记录</p>
               ) : (
                 data.logs.map((log, i) => (
                   <p key={i} className={log.side === 'player' ? 'text-emerald-300/80' : 'text-red-300/80'}>
-                    [{log.side === 'player' ? '己方' : '敌方'}] {getCellLabel(log.fromPos)} → {getCellLabel(log.toPos)}，
-                    造成 {log.damage} 伤害{log.killed ? ' 💀' : ''}
+                    [{log.side === 'player' ? '己方' : '敌方'}] {log.fromName ?? getCellLabel(log.fromPos)} → {log.toName ?? getCellLabel(log.toPos)}，
+                    {log.breakdown ? `剑${log.breakdown.sword} 法${log.breakdown.spell} 近${log.breakdown.melee}，` : ''}
+                    共 {log.damage} 伤害{log.killed ? ' 💀' : ''}
                   </p>
                 ))
               )}
@@ -479,8 +568,8 @@ export function BattleModal({
           <div className="mx-6 rounded-[18px] border border-[#b8863a]/70 bg-[linear-gradient(180deg,rgba(80,50,20,0.98),rgba(40,25,12,0.97))] p-6 text-center shadow-[0_20px_60px_rgba(20,10,4,0.8)]">
             <p className="text-sm text-amber-100/60">警告</p>
             <p className="mt-3 text-base leading-7 text-[#ead8ba]">
-              不部署部队会导致飞舟单独作战，<br />
-              如是无飞舟的战斗可能导致直接失败。
+              不部署战斗人员会导致飞舟单独作战，<br />
+              可能承受全部火力。
             </p>
             <div className="mt-6 flex justify-center gap-3">
               <button className="action" onClick={() => { setConfirmZeroDeploy(false); startFight(confirmZeroDeploy === 'quick', true) }}>

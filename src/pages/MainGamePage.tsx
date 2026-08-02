@@ -74,6 +74,7 @@ const [dialogConfig, setDialogConfig] = useState<{
   const increaseMoveRange = useGameStore((state) => state.increaseMoveRange)
   const repairAirship = useGameStore((state) => state.repairAirship)
   const recruitCrew = useGameStore((state) => state.recruitCrew)
+  const repairCombatant = useGameStore((state) => state.repairCombatant)
   const buildBuilding = useGameStore((state) => state.buildBuilding)
   const clearPendingPlan = useGameStore((state) => state.clearPendingPlan)
   const executePendingPlan = useGameStore((state) => state.executePendingPlan)
@@ -290,7 +291,7 @@ const [dialogConfig, setDialogConfig] = useState<{
     }
 
     if (hadTravel && Math.random() < 0.5) {
-      const encounter = generateRandomEncounter(session.player.airshipDurability)
+      const encounter = generateRandomEncounter(session.player.airshipDurability, session.player.combatants)
       setBattleData(encounter)
       setIsDrillBattle(false)
     }
@@ -336,7 +337,8 @@ const [dialogConfig, setDialogConfig] = useState<{
                   onIncreaseCargoCapacity={increaseCargoCapacity}
                   onIncreaseMoveRange={increaseMoveRange}
                   onRepairAirship={repairAirship}
-                  onStartDrill={() => setBattleData(createBattleState(session.player.airshipDurability))}
+                  onRepairCombatant={repairCombatant}
+                  onStartDrill={() => setBattleData(createBattleState(session.player.airshipDurability, session.player.combatants))}
                 />
               ) : null}
               {mainView === 'map' ? (
@@ -483,14 +485,15 @@ const [dialogConfig, setDialogConfig] = useState<{
           {battleData ? (
             <BattleModal
               battle={battleData}
-              maxCrew={session.player.airshipCrew}
               isDrill={isDrillBattle}
               onClose={(settlement) => {
                 const currentSession = useGameStore.getState().session
                 if (!currentSession) return
                 if (settlement) {
                   currentSession.player.airshipDurability = Math.max(0, currentSession.player.airshipDurability - settlement.shipDamage)
-                  currentSession.player.airshipCrew = Math.max(0, currentSession.player.airshipCrew - settlement.crewLoss)
+                  if (settlement.combatants) {
+                    currentSession.player.combatants = settlement.combatants
+                  }
                   if (battleData?.battleEventId && settlement.battleResult) {
                     const eventResult = checkEvents('battle_end', currentSession, { battleResult: settlement.battleResult })
                     if (eventResult) {

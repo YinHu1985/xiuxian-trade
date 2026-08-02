@@ -30,6 +30,7 @@ export const defaultConfig: GameConfig = {
     moveRangeUpgradeBaseCost: 180,
     repairAirshipCost: 30,
     recruitCrewCost: 20,
+    repairCombatantCost: 1,
   },
   market: {
     minModifier: 0.5,

@@ -1130,6 +1130,29 @@ export function recruitCrew(session: GameSession) {
   return next
 }
 
+/* ====================== 战斗人员管理 ====================== */
+
+/** 修整一名战斗人员所需灵石（每恢复 1 点耐久 × 单价） */
+export function getRepairCombatantCost(session: GameSession, combatantId: string) {
+  const unit = session.player.combatants.find((c) => c.id === combatantId)
+  if (!unit) return 0
+  return Math.max(0, unit.maxHp - unit.hp) * session.config.economy.repairCombatantCost
+}
+
+/** 花钱修整战斗人员：回复全部耐久 */
+export function repairCombatant(session: GameSession, combatantId: string) {
+  const next = cloneSession(session)
+  const unit = next.player.combatants.find((c) => c.id === combatantId)
+  if (!unit) return next
+  const cost = Math.max(0, unit.maxHp - unit.hp) * next.config.economy.repairCombatantCost
+  if (cost <= 0) return next
+  if (next.player.spiritStone < cost) return next
+  next.player.spiritStone -= cost
+  unit.hp = unit.maxHp
+  addLog(next, `花费 ${cost} 灵石为「${unit.name}」修整，耐久恢复至 ${unit.maxHp}。`)
+  return next
+}
+
 /* ====================== 宗门拜山 ====================== */
 
 import type { RuinObstacleType, RuinExplorationNode, RuinExplorationEdge, RuinExplorationState } from '@/game/types'

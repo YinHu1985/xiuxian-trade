@@ -1,3 +1,4 @@
+import { createStartingCombatants } from '@/game/battle'
 import type { GameSession, SaveMeta, SaveRecord } from '@/game/types'
 
 const SAVE_INDEX_KEY = 'xiuxian-trade-save-index'
@@ -42,7 +43,12 @@ export function loadSave(id: string) {
   const raw = localStorage.getItem(`${SAVE_PREFIX}${id}`)
   if (!raw) return null
   try {
-    return JSON.parse(raw) as SaveRecord
+    const record = JSON.parse(raw) as SaveRecord
+    // 旧存档迁移：补齐战斗人员编队
+    if (!record.data?.player?.combatants) {
+      record.data.player.combatants = createStartingCombatants()
+    }
+    return record
   } catch {
     return null
   }
