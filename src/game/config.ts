@@ -10,6 +10,7 @@ export const defaultConfig: GameConfig = {
     knownNeighborCount: 3,
     averageConnections: 2.6,
     hubBias: 0.22,
+    openTownsAtStart: false,
   },
   progress: {
     maxTurns: 80,

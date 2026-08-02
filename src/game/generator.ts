@@ -430,6 +430,9 @@ function revealInitialArea(nodes: NodeState[], edges: EdgeState[], config: GameC
   startNode.discovery = 'confirmed'
   startNode.knownProducts = true
 
+  // 城镇联通开局：其余城镇与联通路径由 revealTownMst 揭示，此处不再散布邻居传闻
+  if (config.map.openTownsAtStart) return startNode
+
   const neighbors = getNeighbors(startNode.id, edges)
     .map((neighborId) => nodes.find((node) => node.id === neighborId))
     .filter((node): node is NodeState => Boolean(node))
@@ -453,10 +456,110 @@ function revealInitialArea(nodes: NodeState[], edges: EdgeState[], config: GameC
   return startNode
 }
 
+/**
+ * 城镇联通开局：以起始城镇为根，构建连接所有城镇的最小生成树（Steiner 树近似）。
+ * 规则：
+ * 1. 只以城镇为连接目标，非城镇节点仅在成为城镇间必经路径时被揭示；
+ *    路径端点只会是城镇或已联通集合，因此非城镇节点不会以叶子形态出现在联通主干上。
+ * 2. 路径成本 = 距离 + 揭示非城镇节点的惩罚，优先选择揭示更少非城镇据点的路径
+ *    （惩罚远大于任何地图距离，先比较揭示数量，再比较距离）。
+ */
+function revealTownMst(nodes: NodeState[], edges: EdgeState[], startNode: NodeState) {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]))
+  const uncoveredTowns = new Set(nodes.filter((node) => node.type === 'town').map((node) => node.id))
+  uncoveredTowns.delete(startNode.id)
+  if (uncoveredTowns.size === 0) return
+
+  // 揭示一个非城镇节点的惩罚成本：远大于任意地图距离，保证优先减少揭示数量
+  const NON_TOWN_REVEAL_PENALTY = 10_000
+
+  const edgesByNode = new Map<string, EdgeState[]>()
+  nodes.forEach((node) => edgesByNode.set(node.id, []))
+  edges.forEach((edge) => {
+    edgesByNode.get(edge.fromNodeId)!.push(edge)
+    edgesByNode.get(edge.toNodeId)!.push(edge)
+  })
+
+  const edgeBetween = (a: string, b: string) =>
+    edgesByNode.get(a)!.find((edge) => edge.fromNodeId === b || edge.toNodeId === b)
+
+  // 已联通集合：开局仅包含起始城镇，路径展开后逐步并入必经节点与城镇
+  const connected = new Set<string>([startNode.id])
+  const mstEdges = new Set<EdgeState>()
+
+  while (uncoveredTowns.size > 0) {
+    // 多源 Dijkstra：connected 全部作为源，找总成本（距离 + 非城镇惩罚）最小的未覆盖城镇
+    const dist = new Map(nodes.map((node) => [node.id, Number.POSITIVE_INFINITY]))
+    const prev = new Map<string, string>()
+    const settled = new Set<string>()
+    connected.forEach((id) => dist.set(id, 0))
+
+    let targetTown: string | null = null
+    while (settled.size < nodes.length) {
+      let current: string | null = null
+      let bestCost = Number.POSITIVE_INFINITY
+      for (const node of nodes) {
+        if (!settled.has(node.id)) {
+          const cost = dist.get(node.id)!
+          if (cost < bestCost) {
+            bestCost = cost
+            current = node.id
+          }
+        }
+      }
+      if (current === null || bestCost === Number.POSITIVE_INFINITY) break
+      settled.add(current)
+      if (uncoveredTowns.has(current)) {
+        targetTown = current
+        break
+      }
+      for (const edge of edgesByNode.get(current)!) {
+        const otherId = edge.fromNodeId === current ? edge.toNodeId : edge.fromNodeId
+        if (settled.has(otherId)) continue
+        const neighbor = nodeById.get(otherId)!
+        const revealCost = neighbor.type === 'town' ? 0 : NON_TOWN_REVEAL_PENALTY
+        const cost = bestCost + distance(nodeById.get(current)!, neighbor) + revealCost
+        if (cost < dist.get(otherId)!) {
+          dist.set(otherId, cost)
+          prev.set(otherId, current)
+        }
+      }
+    }
+
+    // 图不连通，无可达城镇时停止
+    if (!targetTown) break
+
+    // 沿最短路径回溯展开，并入节点与边
+    let cursor: string | undefined = targetTown
+    while (cursor !== undefined) {
+      connected.add(cursor)
+      const parent = prev.get(cursor)
+      if (parent !== undefined) {
+        const edge = edgeBetween(cursor, parent)
+        if (edge) mstEdges.add(edge)
+      }
+      cursor = parent
+    }
+    uncoveredTowns.delete(targetTown)
+  }
+
+  mstEdges.forEach((edge) => {
+    edge.discovery = 'confirmed'
+  })
+  connected.forEach((nodeId) => {
+    const node = nodeById.get(nodeId)!
+    node.discovery = 'confirmed'
+    node.knownProducts = true
+  })
+}
+
 export function createNewGame(config: GameConfig = defaultConfig, seed = Date.now(), guildName = '太虚商会') {
   const nodes = createNodes(config, seed)
   const edges = createEdges(nodes, config, seed)
   const startNode = revealInitialArea(nodes, edges, config, seed)
+  if (config.map.openTownsAtStart) {
+    revealTownMst(nodes, edges, startNode)
+  }
 
   const player: PlayerState = {
     currentNodeId: startNode.id,

@@ -217,6 +217,8 @@ export interface MapConfig {
   knownNeighborCount: number
   averageConnections: number
   hubBias: number
+  /** 城镇联通开局：开局揭示连接所有城镇的最小生成树路径 */
+  openTownsAtStart: boolean
 }
 
 export interface ProgressConfig {

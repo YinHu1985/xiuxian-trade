@@ -35,6 +35,7 @@ export default function NewGamePage({ onNavigate }: { onNavigate: (page: 'game' 
   const [mode, setMode] = useState<PageMode>('landing')
   const [config, setConfig] = useState<GameConfig>(defaultConfig)
   const [guildName, setGuildName] = useState('太虚商会')
+  const [openTowns, setOpenTowns] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
 
@@ -53,7 +54,7 @@ export default function NewGamePage({ onNavigate }: { onNavigate: (page: 'game' 
   }
 
   function handleStart() {
-    createSession(config, guildName.trim() || '太虚商会')
+    createSession({ ...config, map: { ...config.map, openTownsAtStart: openTowns } }, guildName.trim() || '太虚商会')
     onNavigate('game')
   }
 
@@ -156,6 +157,41 @@ export default function NewGamePage({ onNavigate }: { onNavigate: (page: 'game' 
               </button>
             </div>
             <p className="mt-3 text-sm text-[#cdb48a]">开局后会显示在左上角牌匾处，并随存档一并保留。</p>
+          </div>
+
+          {/* 开局模式 */}
+          <div className="mt-6 rounded-[22px] border border-[#7a5a36]/55 bg-[linear-gradient(180deg,rgba(65,44,28,0.94),rgba(40,27,19,0.92))] p-5">
+            <div className="text-xs uppercase tracking-[0.3em] text-amber-100/45">开局模式</div>
+            <div className="mt-4 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setOpenTowns(false)}
+                className={`flex-1 rounded-[14px] border px-4 py-3 text-sm transition ${
+                  !openTowns
+                    ? 'border-[#d8b073] bg-[linear-gradient(180deg,rgba(122,83,44,0.98),rgba(81,54,29,0.96))] text-[#fff4dd]'
+                    : 'border-[#7c5c39]/45 bg-[linear-gradient(180deg,rgba(88,58,35,0.92),rgba(56,37,24,0.9))] text-[#cdb48a] hover:border-[#c19154]/65 hover:text-[#fff4dd]'
+                }`}
+              >
+                探索式开局
+                <span className={`mt-1 block text-xs ${!openTowns ? 'text-[#fff4dd]/70' : 'text-[#cdb48a]/60'}`}>
+                  仅起始城镇周边可见，逐步开拓
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpenTowns(true)}
+                className={`flex-1 rounded-[14px] border px-4 py-3 text-sm transition ${
+                  openTowns
+                    ? 'border-[#d8b073] bg-[linear-gradient(180deg,rgba(122,83,44,0.98),rgba(81,54,29,0.96))] text-[#fff4dd]'
+                    : 'border-[#7c5c39]/45 bg-[linear-gradient(180deg,rgba(88,58,35,0.92),rgba(56,37,24,0.9))] text-[#cdb48a] hover:border-[#c19154]/65 hover:text-[#fff4dd]'
+                }`}
+              >
+                城镇联通开局
+                <span className={`mt-1 block text-xs ${openTowns ? 'text-[#fff4dd]/70' : 'text-[#cdb48a]/60'}`}>
+                  全城镇与联通道路开局可见，即开即商
+                </span>
+              </button>
+            </div>
           </div>
 
           {/* 核心参数 */}

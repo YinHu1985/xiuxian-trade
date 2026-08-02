@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { defaultConfig } from '@/game/config'
 import { craftedCategories, productMap, rawMaterialCategories } from '@/game/data'
 import { createNewGame } from '@/game/generator'
 import {
@@ -94,6 +95,68 @@ describe('地图生成', () => {
         }
       })
     })
+  })
+
+  it('城镇联通开局应揭示所有城镇与联通主干道，分支保持隐藏', () => {
+    const config = { ...defaultConfig, map: { ...defaultConfig.map, openTownsAtStart: true } }
+    const session = createNewGame(config, 9527)
+
+    const towns = session.world.nodes.filter((node) => node.type === 'town')
+    const startNodeId = session.player.currentNodeId
+    const edgeByNode = new Map<string, typeof session.world.edges>()
+    session.world.nodes.forEach((node) => edgeByNode.set(node.id, []))
+    session.world.edges.forEach((edge) => {
+      edgeByNode.get(edge.fromNodeId)!.push(edge)
+      edgeByNode.get(edge.toNodeId)!.push(edge)
+    })
+
+    // 所有城镇开局可见且已知产物
+    towns.forEach((town) => {
+      expect(town.discovery).toBe('confirmed')
+      expect(town.knownProducts).toBe(true)
+    })
+
+    // 从起始城镇沿 confirmed 边可达的节点应覆盖全部城镇
+    const reachable = new Set<string>([startNodeId])
+    const queue = [startNodeId]
+    while (queue.length) {
+      const nodeId = queue.shift()!
+      edgeByNode.get(nodeId)!.forEach((edge) => {
+        const otherId = edge.fromNodeId === nodeId ? edge.toNodeId : edge.fromNodeId
+        if (edge.discovery === 'confirmed' && !reachable.has(otherId)) {
+          reachable.add(otherId)
+          queue.push(otherId)
+        }
+      })
+    }
+    towns.forEach((town) => {
+      expect(reachable.has(town.id)).toBe(true)
+    })
+
+    // 联通主干道构成树：confirmed 边数 = 可达节点数 - 1（无环）
+    const confirmedEdges = session.world.edges.filter((edge) => edge.discovery === 'confirmed')
+    expect(confirmedEdges.length).toBe(reachable.size - 1)
+    // 分支道路保持隐藏：可见边数少于总边数
+    expect(confirmedEdges.length).toBeLessThan(session.world.edges.length)
+    // 所有可见节点都必须位于联通主干道上，不允许孤立开启的非城镇节点
+    const edgeEndpointIds = new Set(confirmedEdges.flatMap((edge) => [edge.fromNodeId, edge.toNodeId]))
+    session.world.nodes
+      .filter((node) => node.discovery === 'confirmed' && node.id !== startNodeId)
+      .forEach((node) => {
+        expect(edgeEndpointIds.has(node.id)).toBe(true)
+      })
+
+    // 非城镇节点不允许以叶子形态出现在主干上（不在任何城镇-城镇路径上就不该被揭示）
+    const treeDegree = new Map<string, number>()
+    confirmedEdges.forEach((edge) => {
+      treeDegree.set(edge.fromNodeId, (treeDegree.get(edge.fromNodeId) ?? 0) + 1)
+      treeDegree.set(edge.toNodeId, (treeDegree.get(edge.toNodeId) ?? 0) + 1)
+    })
+    session.world.nodes
+      .filter((node) => node.discovery === 'confirmed' && node.type !== 'town')
+      .forEach((node) => {
+        expect(treeDegree.get(node.id) ?? 0).toBeGreaterThanOrEqual(2)
+      })
   })
 })
 
